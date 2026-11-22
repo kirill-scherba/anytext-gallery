@@ -1,0 +1,77 @@
+# anytext-gallery — the gallery module of AnyText
+
+A grid of the pictures of one collection, previews taken from the installation's own thumbnail
+endpoint, and a viewer that walks the collection. The module owns no pictures and no database: the
+collection belongs to the installation, and the screen is a window over it.
+
+```
+person ──► AnyText (proxy /api/module/gallery/) ──► anytext-gallery :7860
+                                                        │
+                                                        ├── rag.list / bucket.list  (what is in it)
+                                                        └── /api/thumb, /api/file    (the pictures)
+```
+
+## What it needs
+
+- AnyText 0.4.16 or newer: a module process is started with `ANYTEXT_SELF`, and the picture endpoints
+  answer with the account token the window puts on every request — so previews work at the machine and
+  through the relay alike.
+- Nothing else. No database, no second copy of the files.
+
+## Build and install
+
+```bash
+CGO_ENABLED=0 go build -o ~/.local/bin/anytext-gallery .
+
+curl -s -X POST http://127.0.0.1:7787/api/command -H 'Content-Type: application/json' -d '{
+  "command":"modules.install",
+  "args":{"id":"gallery","name":"Галерея","names":{"ru":"Галерея","en":"Gallery"},"version":"0.1.0",
+          "addr":"127.0.0.1:7860",
+          "command":["'"$HOME"'/.local/bin/anytext-gallery","-addr","127.0.0.1:7860","-bucket","галерея"],
+          "auto_start":true}}'
+
+curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
+```
+
+## The screen
+
+| Part | What it does |
+|---|---|
+| grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
+| previews | taken from `/api/thumb` with the account token, six at a time, when a card comes near the screen |
+| viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes |
+| search | by name of the file and its folder |
+| articles | the next step: long-form texts around the pictures |
+
+The screen is **one self-contained document**: styles and script inside the page. A module split into
+files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4).
+
+## API
+
+| Request | Answer |
+|---|---|
+| `GET /health` | `{"status":"ok"}` |
+| `GET /api/status` | module version, installation address, collection, how many pictures, why not |
+| `GET /api/config` | the collection the module works with |
+| `GET /api/images?offset=&limit=&q=` | one page of the grid: `{bucket, total, offset, limit, items}` |
+
+A picture is `{doc, name, folder, vision, has_description}` — `doc` is the document key the picture
+endpoints expect.
+
+## Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-addr` | `127.0.0.1:7860` | where the module listens (loopback only) |
+| `-install` | `$ANYTEXT_SELF` | the installation, `http://127.0.0.1:7787` when nothing is set |
+| `-bucket` | `галерея` | the collection with the pictures |
+
+## Tests
+
+```bash
+go vet ./... && go test ./...
+```
+
+A fake installation answers `bucket.list` and `rag.list`: the tests check that only pictures of the
+root folder are shown, that a page and a filter work, that an unreachable installation is named as
+such, and that the page stays self-contained.

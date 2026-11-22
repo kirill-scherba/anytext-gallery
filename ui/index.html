@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="{{.Prefix}}/" />
+  <title>Галерея</title>
+  <!-- The styles and the script are inside the page: an iframe cannot put the account token on a
+       <link> or a <script src>, and through the relay those requests are refused. -->
+  <style>{{.Style}}</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <span class="name" data-i18n="gallery">Галерея</span>
+      <span class="muted" id="counter"></span>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="text active" data-tab="pictures" data-i18n="pictures">Картинки</button>
+      <button type="button" class="text" data-tab="articles" disabled data-i18n="articles">Статьи</button>
+    </div>
+
+    <div class="actions">
+      <input type="search" id="search" class="search" data-i18n-placeholder="searchPlaceholder" placeholder="поиск по имени" />
+      <button type="button" class="text" id="refresh" data-i18n="refresh">Обновить</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <main>
+    <div class="cards" id="cards"></div>
+    <div class="empty" id="empty" hidden></div>
+  </main>
+  <div id="sentinel"></div>
+
+  <footer class="foot"><span id="footInfo"></span></footer>
+
+  <!-- The viewer: the whole picture, its name, and the arrows to walk the collection. -->
+  <div class="viewer" id="viewer" hidden>
+    <button type="button" class="viewer-close" id="viewerClose" title="Esc">×</button>
+    <button type="button" class="viewer-nav prev" id="viewerPrev" title="←">‹</button>
+    <figure>
+      <img id="viewerImage" alt="" />
+      <figcaption><span id="viewerName"></span></figcaption>
+    </figure>
+    <button type="button" class="viewer-nav next" id="viewerNext" title="→">›</button>
+  </div>
+
+  <script>{{.Script}}</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Context — anytext-gallery
+
+## Current state
+
+Step 1 of the gallery: a grid of the pictures of one collection, previews and originals from the
+installation's own endpoints, a viewer, and a search by name. The module owns no files and no
+database (0.1.0, 22.11.2026).
+
+## Decisions
+
+- 22.11.2026: the pictures are **documents of the installation's collection**, not a copy. The old
+  Perl gallery keeps its own folder and its own auth; the module reads the collection and shows the
+  root folder only — the copies in `pub/` and the pictures in `trash/` are not the gallery.
+- 22.11.2026: **no picture bytes through the module.** Previews come from `/api/thumb` and originals
+  from `/api/file`, fetched with the account token the window puts on every request. That is the only
+  way that works at the machine and through the relay without a second permit system.
+- 22.11.2026: one module, two sections («Картинки», «Статьи»). The articles section is the memoirs of
+  the old gallery; it is the next step and will read a collection of its own.
+- 22.11.2026: descriptions stay for now in `memory/gallery/meta/<file>` (the old gallery reads them
+  there) and are **copied** into the installation's standard place (`doc.save_description`, which
+  writes `<file>/vision`) — «не переносить, а копировать», because both galleries live side by side
+  for a while. When the old gallery is closed, the memory copies are cleaned.
+
+## Next steps
+
+1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
+   installation's index described above.
+2. Articles: a list of a collection, markdown rendered, pictures open the viewer.
+3. Trash and public on the installation's own mechanism (`doc.delete` without deleting the file,
+   `doc.restore`), then the Perl service and its basic auth are switched off.
+4. Several collections per section — the setting becomes a list, the grid merges with the collection
+   in the picture's key, so the data model does not change.

@@ -1,0 +1,191 @@
+/* Copyright 2026 Kirill Scherba. All rights reserved.
+   Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
+
+   The module brings its own look but does not fight the shell for width, scrollbars or theme: the
+   theme comes from the shell's own key (localStorage "anytext-theme"), the palette is Bootstrap's. */
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #212529;
+  --muted: #6c757d;
+  --line: #dee2e6;
+  --soft: #f8f9fa;
+  --accent: #0d6efd;
+  --card: #f1f3f5;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg: #212529;
+  --fg: #dee2e6;
+  --muted: #adb5bd;
+  --line: #495057;
+  --soft: #2b3035;
+  --accent: #0d6efd;
+  --card: #2b3035;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+button, input { font: inherit; color: inherit; }
+
+/* --- the bar --------------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.title { display: flex; align-items: baseline; gap: 8px; }
+.title .name { font-weight: 600; }
+.muted { color: var(--muted); font-size: 12px; }
+
+.tabs { display: flex; gap: 2px; margin-left: 8px; }
+.actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+
+button.text {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  line-height: 1.1;
+}
+
+button.text:hover { background: var(--soft); border-color: var(--line); }
+button.text.active { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--line); font-weight: 600; }
+button.text:disabled { opacity: 0.45; cursor: default; }
+
+.search {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 9px;
+  background: var(--bg);
+  min-width: 180px;
+}
+
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.notice {
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+/* --- the grid -------------------------------------------------------------------------------- */
+
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px 12px 4px;
+  overflow: auto;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 0;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.card .ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  word-break: break-all;
+}
+
+.card.broken { border-color: color-mix(in srgb, #dc3545 40%, var(--line)); }
+
+.empty { color: var(--muted); padding: 24px 4px; }
+
+#sentinel { flex: 0 0 auto; height: 1px; }
+
+/* --- the viewer ------------------------------------------------------------------------------ */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.86);
+}
+
+.viewer[hidden] { display: none; }
+
+.viewer figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; max-height: 100%; }
+.viewer img { max-width: min(1600px, 92vw); max-height: 86vh; object-fit: contain; border-radius: 6px; }
+.viewer figcaption { color: #e9ecef; font-size: 13px; word-break: break-all; text-align: center; }
+
+.viewer-nav, .viewer-close {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  border-radius: 8px;
+  width: 44px;
+  height: 64px;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.viewer-close { position: fixed; top: 14px; right: 14px; width: 40px; height: 40px; font-size: 24px; }
+.viewer-nav:disabled { opacity: 0.3; cursor: default; }
+
+/* --- the footer ------------------------------------------------------------------------------ */
+
+.foot {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
