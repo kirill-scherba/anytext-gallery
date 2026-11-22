@@ -84,6 +84,9 @@ type Picture struct {
 	// ModTime is when the file was last changed: the grid shows the newest first, because a name
 	// does not say when a picture appeared (22.11.2026).
 	ModTime string `json:"mod_time,omitempty"`
+	// Story is the chapter of the memoirs this picture appears in, if any.
+	Story     string `json:"story,omitempty"`
+	StoryName string `json:"story_name,omitempty"`
 	// Description is the text the installation holds about the picture - the standard place, where
 	// "Describe with a model" and this gallery both write. Meta is the gallery's own record, kept for
 	// the old gallery while it lives.
@@ -140,12 +143,12 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 	}
 	var answer struct {
 		Documents []struct {
-			Key     string `json:"key"`
-			Name    string `json:"name"`
-			Folder  string `json:"folder"`
-			Kind    string `json:"kind"`
-			State   string `json:"state"`
-			Size    int64  `json:"size"`
+			Key         string `json:"key"`
+			Name        string `json:"name"`
+			Folder      string `json:"folder"`
+			Kind        string `json:"kind"`
+			State       string `json:"state"`
+			Size        int64  `json:"size"`
 			Path        string `json:"path"`
 			ModTime     string `json:"mod_time"`
 			Description string `json:"description"`
@@ -169,14 +172,14 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			continue
 		}
 		out = append(out, Picture{
-			Doc:     key,
-			Name:    d.Name,
-			Folder:  d.Folder,
-			Size:    d.Size,
+			Doc:         key,
+			Name:        d.Name,
+			Folder:      d.Folder,
+			Size:        d.Size,
 			Path:        d.Path,
 			ModTime:     d.ModTime,
 			Description: d.Description,
-			HasDesc: d.HasDescription,
+			HasDesc:     d.HasDescription,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })

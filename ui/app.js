@@ -39,6 +39,8 @@ const STRINGS = {
     metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
+    backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет',
+    articlesError: 'Статьи не пришли',
     savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
     savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
@@ -58,6 +60,8 @@ const STRINGS = {
     metaDescription: 'Description', metaTags: 'Tags (comma separated)',
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
+    backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet',
+    articlesError: 'The articles did not arrive',
     savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
     savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
@@ -116,6 +120,7 @@ const state = {
   q: '',
   sort: 'new',
   mode: 'compact',
+  tab: 'pictures',
   loading: false,
   done: false,
   error: '',
@@ -230,6 +235,8 @@ function bindCardInfo(card, item) {
   if (pub) pub.addEventListener('click', (event) => { event.stopPropagation(); togglePublic(item, card) })
   const trash = card.querySelector('[data-act="trash"]')
   if (trash) trash.addEventListener('click', (event) => { event.stopPropagation(); trashPicture(item, card) })
+  const story = card.querySelector('[data-act="story"]')
+  if (story) story.addEventListener('click', (event) => { event.stopPropagation(); openArticle(item.story_name) })
 }
 
 /** redrawInfo replaces the caption of one card after its meta changed. */
@@ -253,6 +260,7 @@ function cardInfoHTML(item) {
     <div class="actions">
       <button type="button" class="text ${item.public ? 'unpub' : 'pub'}" data-act="public">${esc(item.public ? t('unpublic') : t('makePublic'))}</button>
       <button type="button" class="text" data-act="edit">${esc(t('edit'))}</button>
+      ${item.story ? `<button type="button" class="text story-btn" data-act="story">${esc(t('story'))}</button>` : ''}
     </div>
     ${item.public ? `<div class="pub-url"><a href="${esc(pubUrl)}" target="_blank" rel="noopener">${esc(t('publicLink'))}</a></div>` : ''}
   </div>`
@@ -603,14 +611,9 @@ function bind() {
   })
 
   for (const tab of document.querySelectorAll('[data-tab]')) {
-    tab.addEventListener('click', () => {
-      if (tab.dataset.tab === 'articles') {
-        showNotice(t('articlesSoon'))
-        return
-      }
-      for (const other of document.querySelectorAll('[data-tab]')) other.classList.toggle('active', other === tab)
-    })
+    tab.addEventListener('click', () => showTab(tab.dataset.tab))
   }
+  $('storyBack').addEventListener('click', closeArticle)
 
   window.addEventListener('storage', (event) => {
     if (event.key === 'anytext-theme') applyTheme()
@@ -653,3 +656,113 @@ async function start() {
 }
 
 start()
+
+// --- the articles ------------------------------------------------------------------------------
+
+/** formatDate draws an ISO date in the person's language; anything else is shown as written. */
+function formatDate(value) {
+  if (!value) return ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const d = new Date(value + 'T00:00:00')
+  if (isNaN(d.getTime())) return value
+  return d.toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+/** showTab switches between the pictures and the articles of the memoirs. */
+function showTab(tab) {
+  state.tab = tab === 'articles' ? 'articles' : 'pictures'
+  for (const button of document.querySelectorAll('[data-tab]')) {
+    button.classList.toggle('active', button.dataset.tab === state.tab)
+  }
+  $('cards').hidden = state.tab !== 'pictures'
+  $('toc').hidden = state.tab !== 'articles'
+  $('story').hidden = true
+  $('empty').hidden = true
+  $('search').hidden = state.tab === 'articles'
+  $('sort').hidden = state.tab === 'articles'
+  $('mode').hidden = state.tab === 'articles'
+  if (state.tab === 'articles') loadArticles()
+}
+
+/** loadArticles draws the table of contents: newest chapter first. */
+async function loadArticles() {
+  const toc = $('toc')
+  toc.innerHTML = `<div class="empty">${esc(t('loading'))}</div>`
+  try {
+    const answer = await api('api/articles')
+    const list = answer.articles || []
+    if (!list.length) {
+      toc.innerHTML = `<div class="empty">${esc(t('articlesEmpty'))}</div>`
+      return
+    }
+    toc.innerHTML = ''
+    for (const article of list) {
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.className = 'toc-row'
+      const date = formatDate(article.date)
+      row.innerHTML = `<span class="toc-title">${esc(article.title)}</span>` +
+        `<span class="toc-date">${esc(date)}</span>` +
+        (article.description ? `<span class="toc-desc">${esc(article.description)}</span>` : '')
+      row.addEventListener('click', () => openArticle(article.name))
+      toc.appendChild(row)
+    }
+  } catch (e) {
+    toc.innerHTML = `<div class="empty">${esc(t('articlesError'))}: ${esc(e.message)}</div>`
+  }
+}
+
+/** openArticle shows one chapter; its pictures are loaded through the same viewer as the grid. */
+async function openArticle(name) {
+  const story = $('story')
+  $('toc').hidden = true
+  $('cards').hidden = true
+  story.hidden = false
+  $('storyTitle').textContent = ''
+  $('storyMeta').textContent = ''
+  $('storyBody').innerHTML = `<div class="empty">${esc(t('loading'))}</div>`
+  $('scroller').scrollTop = 0
+  try {
+    const page = await api('api/article?name=' + encodeURIComponent(name))
+    $('storyTitle').textContent = page.title || name
+    const date = formatDate(page.date)
+    $('storyMeta').textContent = [date, page.place].filter(Boolean).join(' · ')
+    $('storyBody').innerHTML = page.html || ''
+    const docs = page.docs || {}
+    for (const img of $('storyBody').querySelectorAll('img[data-gallery]')) {
+      const picture = img.dataset.gallery
+      const doc = docs[picture]
+      if (!doc) continue
+      img.dataset.doc = doc
+      img.classList.add('story-picture')
+      img.addEventListener('click', () => {
+        const item = { doc, name: picture }
+        state.items = [item]
+        viewerIndex = 0
+        showViewer()
+      })
+      try {
+        const res = await runFetch(() => fetch(fileURL(doc)))
+        if (res.ok) img.src = URL.createObjectURL(await res.blob())
+      } catch (e) { /* a picture that did not come is a picture without a box */ }
+    }
+    for (const link of $('storyBody').querySelectorAll('a[data-gallery]')) {
+      const doc = docs[link.dataset.gallery]
+      if (!doc) continue
+      link.addEventListener('click', (event) => {
+        event.preventDefault()
+        const item = { doc, name: link.dataset.gallery }
+        state.items = [item]
+        viewerIndex = 0
+        showViewer()
+      })
+    }
+  } catch (e) {
+    $('storyBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`
+  }
+}
+
+function closeArticle() {
+  $('story').hidden = true
+  $('toc').hidden = false
+}

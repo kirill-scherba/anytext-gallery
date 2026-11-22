@@ -44,7 +44,8 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | search | by name of the file and its folder |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
-| articles | the next step: long-form texts around the pictures |
+| articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
+| story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text, nobody fills it by hand |
 
 The screen is **one self-contained document**: styles and script inside the page. A module split into
 files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4).
@@ -68,6 +69,8 @@ endpoints expect.
 | `-addr` | `127.0.0.1:7860` | where the module listens (loopback only) |
 | `-install` | `$ANYTEXT_SELF` | the installation, `http://127.0.0.1:7787` when nothing is set |
 | `-bucket` | `галерея` | the collection with the pictures |
+| `-articles` | `мемуары` | the collection with the long-form articles (empty: no articles tab) |
+| `-public-base` | — | the address public copies are served at, e.g. `https://bmat.uk/i/pub` |
 
 ## Tests
 

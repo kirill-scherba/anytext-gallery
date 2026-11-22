@@ -105,6 +105,21 @@ Saving still writes both: the installation (the truth, searchable) and memory-st
 gallery, which is still alive). An edit made in AnyText therefore does not reach the old gallery — it is
 being retired, and that is the direction of the dependency: gallery → installation, never back.
 
+## Step 3: the articles (0.3.0–0.3.2, 22.11.2026)
+
+- The «Статьи» tab lists the chapters of the `-articles` collection (the memoirs): 40 chapters, newest
+  first, with the date from the name and the first paragraph as a line. A chapter opens as a page:
+  markdown rendered by goldmark, the header lines (`**Дата:**`, `**Место:**`, `**Автор:**`) read the
+  way the old Perl gallery read them.
+- Every picture of a chapter is a reference the screen resolves to **the module's own viewer**: the
+  markdown is rendered and its `/i/<file>` addresses are replaced with `data-gallery`, then the page
+  loads the picture through `/api/file` and opens it in the viewer. bmat.uk is no longer in the way.
+- A picture that appears in a chapter gets a **«Рассказ»** button; the picture → chapter index is built
+  from the chapters' own texts (a cache for two minutes), so nobody fills the old `memoir` field.
+- Two lessons: a container with a `display` rule of its own ignores `hidden` (`.cards[hidden]`), and a
+  non-ISO date in `new Date()` is `Invalid Date` — the module now always answers an ISO date when it
+  knows one.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

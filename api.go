@@ -29,6 +29,8 @@ type app struct {
 	bucket  string
 	// publicBase is the address the public copies are served at (the old gallery's /i/pub/).
 	publicBase string
+	// articles is the reader of the long-form collection (the memoirs), when one is configured.
+	articles *articlesReader
 
 	// root is the folder of the collection, read once: a gallery page must not ask the installation
 	// for the collection list on every scroll step.
@@ -64,6 +66,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/public", a.makePublic)
 	mux.HandleFunc("DELETE /api/public", a.removePublic)
 	mux.HandleFunc("POST /api/trash", a.trash)
+	mux.HandleFunc("GET /api/articles", a.articlesList)
+	mux.HandleFunc("GET /api/article", a.article)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
 	mux.HandleFunc("GET /ui/", a.page)
 	return mux
@@ -152,6 +156,14 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		page[i].Public = IsPublic(page[i])
 		if page[i].Public {
 			page[i].PublicURL = a.publicURL(page[i])
+		}
+		// Which chapter of the memoirs this picture is in: computed from the articles themselves, so
+		// nobody has to fill a field by hand (22.11.2026).
+		if a.articles != nil {
+			if story, ok := a.articles.Story(ctx, page[i].Name); ok {
+				page[i].Story = story.Title
+				page[i].StoryName = story.Name
+			}
 		}
 	}
 	// The words about the pictures: one batch call for the page, not one per card.
@@ -419,3 +431,59 @@ func (a *app) publicURL(p Picture) string {
 	}
 	return strings.TrimRight(a.publicBase, "/") + "/" + p.Name
 }
+
+// articlesList is the table of contents: the chapters, newest first.
+func (a *app) articlesList(w http.ResponseWriter, r *http.Request) {
+	if a.articles == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"articles": []Article{}, "note": "коллекция статей не настроена"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	list, err := a.articles.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articles.bucket, "articles": list})
+}
+
+// article answers one chapter as a page.
+func (a *app) article(w http.ResponseWriter, r *http.Request) {
+	if a.articles == nil {
+		writeError(w, http.StatusNotFound, errNoArticles)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, errors.New("нужна статья (name)"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	page, err := a.articles.Article(ctx, name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	// The screen resolves a picture of the article to its document key, so the article's pictures use
+	// the same viewer as the grid.
+	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	if err == nil {
+		byName := map[string]string{}
+		for _, p := range pics {
+			byName[p.Name] = p.Doc
+		}
+		docs := map[string]string{}
+		for _, name := range page["pictures"].([]string) {
+			if doc, ok := byName[name]; ok {
+				docs[name] = doc
+			}
+		}
+		page["docs"] = docs
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// errNoArticles says the module has no long-form collection configured.
+var errNoArticles = errors.New("коллекция статей не настроена")

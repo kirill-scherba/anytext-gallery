@@ -19,13 +19,14 @@ import (
 )
 
 // version is the module's own version.
-const version = "0.2.1"
+const version = "0.3.2"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7860", "address to listen on (loopback only)")
 	install := flag.String("install", "", "installation address (default: ANYTEXT_SELF or http://127.0.0.1:7787)")
 	bucket := flag.String("bucket", "галерея", "collection with the pictures")
 	publicBase := flag.String("public-base", "", "address of the public copies (e.g. https://bmat.uk/i/pub)")
+	articles := flag.String("articles", "мемуары", "collection with the long-form articles (empty: none)")
 	flag.Parse()
 
 	self := strings.TrimRight(strings.TrimSpace(*install), "/")
@@ -42,12 +43,17 @@ func main() {
 	if proxy == "" {
 		proxy = "http://127.0.0.1:7711"
 	}
+	installation := newInstallClient(self)
 	a := &app{
-		install:    newInstallClient(self),
+		install:    installation,
 		memory:     newMemoryClient(proxy, "memory-store-mcp"),
 		bucket:     strings.TrimSpace(*bucket),
 		publicBase: strings.TrimSpace(*publicBase),
 	}
-	log.Printf("anytext-gallery %s: %s, installation %s, collection %q", version, *addr, self, a.bucket)
+	if strings.TrimSpace(*articles) != "" {
+		a.articles = newArticlesReader(installation, strings.TrimSpace(*articles))
+	}
+	log.Printf("anytext-gallery %s: %s, installation %s, collection %q, articles %q",
+		version, *addr, self, a.bucket, strings.TrimSpace(*articles))
 	log.Fatal(http.ListenAndServe(*addr, a.routes()))
 }

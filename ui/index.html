@@ -18,7 +18,7 @@
 
     <div class="tabs" role="tablist">
       <button type="button" class="text active" data-tab="pictures" data-i18n="pictures">Картинки</button>
-      <button type="button" class="text" data-tab="articles" disabled data-i18n="articles">Статьи</button>
+      <button type="button" class="text" data-tab="articles" data-i18n="articles">Статьи</button>
     </div>
 
     <div class="actions">
@@ -39,6 +39,14 @@
 
   <main id="scroller">
     <div class="cards" id="cards"></div>
+    <!-- The table of contents of the memoirs, and one chapter on a page. -->
+    <div class="toc" id="toc" hidden></div>
+    <article class="story" id="story" hidden>
+      <button type="button" class="text back" id="storyBack">‹ <span data-i18n="backToArticles">к статьям</span></button>
+      <h1 id="storyTitle"></h1>
+      <p class="story-meta" id="storyMeta"></p>
+      <div class="story-body" id="storyBody"></div>
+    </article>
     <div class="empty" id="empty" hidden></div>
     <!-- The sentinel lives inside the scrolling element: outside it never crosses anything and the
          next page is never asked for. -->
