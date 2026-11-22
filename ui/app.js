@@ -33,6 +33,9 @@ const STRINGS = {
     sortTitle: 'порядок', sortNew: 'новые сверху', sortName: 'по имени',
     modeTitle: 'вид сетки', modeCompact: 'плотная', modeCards: 'карточки',
     edit: 'Изменить', metaTitle: 'Описание картинки',
+    makePublic: 'Сделать публичной', unpublic: 'Убрать из публичных',
+    publicLink: 'публичная ссылка', trash: 'Удалить', trashTitle: 'Убрать из галереи (файл остаётся)',
+    trashed: 'Убрано из галереи', publicDone: 'Скопировано в public',
     metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
@@ -49,6 +52,9 @@ const STRINGS = {
     sortTitle: 'order', sortNew: 'newest first', sortName: 'by name',
     modeTitle: 'grid', modeCompact: 'dense', modeCards: 'cards',
     edit: 'Edit', metaTitle: 'About this picture',
+    makePublic: 'Make public', unpublic: 'Remove public',
+    publicLink: 'public link', trash: 'Delete', trashTitle: 'Remove from the gallery (the file stays)',
+    trashed: 'Removed from the gallery', publicDone: 'Copied to public',
     metaDescription: 'Description', metaTags: 'Tags (comma separated)',
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
@@ -220,6 +226,10 @@ function renderCards(items) {
 function bindCardInfo(card, item) {
   const edit = card.querySelector('[data-act="edit"]')
   if (edit) edit.addEventListener('click', (event) => { event.stopPropagation(); openMeta(item) })
+  const pub = card.querySelector('[data-act="public"]')
+  if (pub) pub.addEventListener('click', (event) => { event.stopPropagation(); togglePublic(item, card) })
+  const trash = card.querySelector('[data-act="trash"]')
+  if (trash) trash.addEventListener('click', (event) => { event.stopPropagation(); trashPicture(item, card) })
 }
 
 /** redrawInfo replaces the caption of one card after its meta changed. */
@@ -234,11 +244,17 @@ function redrawInfo(card, item) {
 function cardInfoHTML(item) {
   const when = item.mod_time ? new Date(item.mod_time).toLocaleString(locale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
   const desc = item.meta && item.meta.description ? item.meta.description : ''
+  const pubUrl = item.public && item.public_url ? item.public_url : ''
   return `<div class="info">
     <div class="info-row"><span class="name">${esc(item.name)}</span>
-      <button type="button" class="text" data-act="edit" title="${esc(t('edit'))}">${esc(t('edit'))}</button></div>
+      <button type="button" class="text del" data-act="trash" title="${esc(t('trashTitle'))}">${esc(t('trash'))}</button></div>
     <div class="date">${esc(when)}</div>
     ${desc ? `<div class="desc">${esc(desc)}</div>` : ''}
+    <div class="actions">
+      <button type="button" class="text ${item.public ? 'unpub' : 'pub'}" data-act="public">${esc(item.public ? t('unpublic') : t('makePublic'))}</button>
+      <button type="button" class="text" data-act="edit">${esc(t('edit'))}</button>
+    </div>
+    ${item.public ? `<div class="pub-url"><a href="${esc(pubUrl)}" target="_blank" rel="noopener">${esc(t('publicLink'))}</a></div>` : ''}
   </div>`
 }
 
@@ -362,6 +378,37 @@ function stepViewer(delta) {
   }
   viewerIndex = next
   showViewer()
+}
+
+/** togglePublic copies the picture into the public folder, or removes that copy. */
+async function togglePublic(item, card) {
+  try {
+    const answer = item.public
+      ? await api('api/public?doc=' + encodeURIComponent(item.doc), { method: 'DELETE' })
+      : await api('api/public?doc=' + encodeURIComponent(item.doc), { method: 'POST' })
+    item.public = !!answer.public
+    item.public_url = answer.url || ''
+    redrawInfo(card, item)
+    hideNotice()
+  } catch (e) {
+    showNotice(e.message)
+  }
+}
+
+/** trashPicture takes the picture out of the gallery; the file stays on disk. */
+async function trashPicture(item, card) {
+  if (!window.confirm(`${t('trash')}: ${item.name}?`)) return
+  try {
+    await api('api/trash?doc=' + encodeURIComponent(item.doc), { method: 'POST' })
+    state.items = state.items.filter((x) => x.doc !== item.doc)
+    card.remove()
+    state.total = Math.max(0, state.total - 1)
+    updateCounter()
+    showEmptyIfNeeded()
+    hideNotice()
+  } catch (e) {
+    showNotice(e.message)
+  }
 }
 
 // --- what a person writes about a picture ------------------------------------------------------

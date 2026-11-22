@@ -70,6 +70,15 @@ as in bmat.uk and the picture fills it (`cover`): the grid grows the number of c
 of a tile, so the crop is the same as the old gallery's and does not grow with the window. The owner's
 rule: the size is what bmat had, and a picture fills its box.
 
+## As bmat: the grid fills the window, and the card has the buttons (0.1.7)
+
+- The grid no longer keeps a 1400 px page: columns of at least 280 px share the whole width, exactly
+  as the dense grid does. The old gallery had no empty margins on the sides, and neither does this one.
+- A card carries the old gallery's buttons: **Удалить** (takes the picture out of the gallery — the
+  installation excludes the file from the index and keeps it on disk, so it is reversible),
+  **Сделать публичной / Убрать из публичных** (copies into `pub/` beside the picture and answers the
+  public address), **Изменить** (the meta editor). The public link is shown under the buttons.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

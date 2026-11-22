@@ -27,6 +27,8 @@ type app struct {
 	install *installClient
 	memory  *memoryClient
 	bucket  string
+	// publicBase is the address the public copies are served at (the old gallery's /i/pub/).
+	publicBase string
 
 	// root is the folder of the collection, read once: a gallery page must not ask the installation
 	// for the collection list on every scroll step.
@@ -58,6 +60,10 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/meta", a.saveMeta)
 	mux.HandleFunc("DELETE /api/meta", a.deleteMeta)
 	mux.HandleFunc("POST /api/migrate", a.migrate)
+	mux.HandleFunc("GET /api/public", a.publicState)
+	mux.HandleFunc("POST /api/public", a.makePublic)
+	mux.HandleFunc("DELETE /api/public", a.removePublic)
+	mux.HandleFunc("POST /api/trash", a.trash)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
 	mux.HandleFunc("GET /ui/", a.page)
 	return mux
@@ -142,6 +148,12 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	page := pics[offset:end]
+	for i := range page {
+		page[i].Public = IsPublic(page[i])
+		if page[i].Public {
+			page[i].PublicURL = a.publicURL(page[i])
+		}
+	}
 	// The words about the pictures: one batch call for the page, not one per card.
 	if a.memory != nil {
 		names := make([]string, 0, len(page))
@@ -317,4 +329,88 @@ func (a *app) migrate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"records": len(names), "copied": copied, "skipped": skipped, "failed": failed, "problems": problems,
 	})
+}
+
+// publicState answers whether the public copy of a picture exists.
+func (a *app) publicState(w http.ResponseWriter, r *http.Request) {
+	pic, err := a.picture(r.URL.Query().Get("doc"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": pic.Doc, "public": IsPublic(pic), "url": a.publicURL(pic)})
+}
+
+// makePublic copies the picture into the pub folder beside it: the old gallery's "Make public".
+func (a *app) makePublic(w http.ResponseWriter, r *http.Request) {
+	pic, err := a.picture(r.URL.Query().Get("doc"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if _, err := MakePublic(pic); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": pic.Doc, "public": true, "url": a.publicURL(pic)})
+}
+
+// removePublic deletes the public copy; the picture itself stays.
+func (a *app) removePublic(w http.ResponseWriter, r *http.Request) {
+	pic, err := a.picture(r.URL.Query().Get("doc"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err := RemovePublic(pic); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": pic.Doc, "public": false})
+}
+
+// trash takes the picture out of the gallery: the installation excludes the file from its index and
+// keeps it on disk, so "delete" is reversible (the old gallery moved the file to trash/ instead).
+func (a *app) trash(w http.ResponseWriter, r *http.Request) {
+	doc := r.URL.Query().Get("doc")
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	if _, err := a.install.call(ctx, "doc.delete", map[string]any{
+		"bucket": a.bucket, "doc": doc, "delete_file": false,
+	}); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "trashed": true})
+}
+
+// picture finds one picture of the collection by its document key.
+func (a *app) picture(doc string) (Picture, error) {
+	if doc == "" {
+		return Picture{}, errNoDoc
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	if err != nil {
+		return Picture{}, err
+	}
+	for _, p := range pics {
+		if p.Doc == doc {
+			return p, nil
+		}
+	}
+	return Picture{}, errors.New("картинка не найдена: " + doc)
+}
+
+// publicURL is the address a person can give to somebody else.
+func (a *app) publicURL(p Picture) string {
+	if !IsPublic(p) || a.publicBase == "" {
+		return ""
+	}
+	return strings.TrimRight(a.publicBase, "/") + "/" + p.Name
 }

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -74,6 +75,12 @@ type Picture struct {
 	Name   string `json:"name"`
 	Folder string `json:"folder,omitempty"`
 	Size   int64  `json:"size,omitempty"`
+	// Path is the file on disk: the module needs it to place the public copy beside the picture.
+	Path string `json:"path,omitempty"`
+	// Public says a copy of the picture lies in the public folder next to it; PublicURL is the
+	// address a person can give away.
+	Public    bool   `json:"public,omitempty"`
+	PublicURL string `json:"public_url,omitempty"`
 	// ModTime is when the file was last changed: the grid shows the newest first, because a name
 	// does not say when a picture appeared (22.11.2026).
 	ModTime string `json:"mod_time,omitempty"`
@@ -137,6 +144,7 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			Kind    string `json:"kind"`
 			State   string `json:"state"`
 			Size    int64  `json:"size"`
+			Path    string `json:"path"`
 			ModTime string `json:"mod_time"`
 			// A picture that has a description in the index says so; a person sees which ones do.
 			HasDescription bool `json:"has_description"`
@@ -162,12 +170,73 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			Name:    d.Name,
 			Folder:  d.Folder,
 			Size:    d.Size,
+			Path:    d.Path,
 			ModTime: d.ModTime,
 			HasDesc: d.HasDescription,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// publicPath is where the public copy of a picture lies: the pub folder beside it, as the old gallery
+// had it. The folder is not part of the collection's root, so the grid does not list the copies.
+func publicPath(p Picture) string {
+	if p.Path == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(p.Path), "pub", p.Name)
+}
+
+// MakePublic copies the picture next to itself in pub/ and answers the file it wrote.
+func MakePublic(p Picture) (string, error) {
+	dst := publicPath(p)
+	if dst == "" {
+		return "", fmt.Errorf("у картинки нет пути на диске")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	in, err := os.Open(p.Path)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	_ = os.Chmod(dst, 0o644)
+	return dst, nil
+}
+
+// RemovePublic deletes the public copy, if it exists.
+func RemovePublic(p Picture) error {
+	dst := publicPath(p)
+	if dst == "" {
+		return fmt.Errorf("у картинки нет пути на диске")
+	}
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// IsPublic says whether the public copy exists.
+func IsPublic(p Picture) bool {
+	dst := publicPath(p)
+	if dst == "" {
+		return false
+	}
+	_, err := os.Stat(dst)
+	return err == nil
 }
 
 // sortPictures orders the grid: the newest first (what a gallery wants), or by name.
