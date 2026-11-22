@@ -16,6 +16,9 @@ person ──► AnyText (proxy /api/module/gallery/) ──► anytext-gallery 
 - AnyText 0.4.16 or newer: a module process is started with `ANYTEXT_SELF`, and the picture endpoints
   answer with the account token the window puts on every request — so previews work at the machine and
   through the relay alike.
+- **AnyText 0.4.18 for the article editor**: it needs `doc.text {raw: true}` (the file, not the extracted
+  text), `doc.save_raw` (write a chapter back) and `doc.list` with `mod_time`/`description`. An older
+  installation still shows the grid and the chapters, but «Редактировать» cannot save.
 - Nothing else. No database, no second copy of the files.
 
 ## Build and install
