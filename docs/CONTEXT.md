@@ -31,6 +31,14 @@ the keys the picture endpoints want — files with their state and kind, not ind
 The same scan result explains why the collection "loses" pictures after a reindex: nothing is lost,
 they were never indexed. A gallery must never be built on the full-text index.
 
+## Lesson of 22.11.2026 (second): the counter was honest, the grid was not
+
+The grid showed only the first page: the "load more" sentinel sat outside the scrolling element and
+the observer fired once, while the first page was still loading. Now the next page is asked for when
+the scroll comes within a screen of the end, and a page that does not fill the window asks for the
+next one itself. The counter says "120 из 200" while more remain — the number of pictures drawn and
+the number in the collection are two numbers, and both belong on the screen.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

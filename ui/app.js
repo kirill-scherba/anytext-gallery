@@ -29,7 +29,7 @@ const STRINGS = {
     searchPlaceholder: 'поиск по имени', refresh: 'Обновить',
     loading: 'Загрузка…', empty: 'В этой коллекции пока нет картинок',
     nothingFound: 'Ничего не найдено', error: 'Картинки не пришли',
-    picturesCount: 'картинок', articlesSoon: 'Статьи — следующий шаг',
+    picturesCount: 'картинок', of: 'из', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
   },
   en: {
@@ -37,7 +37,7 @@ const STRINGS = {
     searchPlaceholder: 'search by name', refresh: 'Refresh',
     loading: 'Loading…', empty: 'No pictures in this collection yet',
     nothingFound: 'Nothing found', error: 'The pictures did not arrive',
-    picturesCount: 'pictures', articlesSoon: 'Articles are the next step',
+    picturesCount: 'pictures', of: 'of', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
   },
 }
@@ -163,11 +163,21 @@ async function loadPage(reset) {
     renderCards(page.items)
     updateCounter()
     showEmptyIfNeeded()
+    // A window taller than the first page has nothing to scroll: ask for the next page until the
+    // grid reaches past the screen or the collection ends.
+    const scroller = $('scroller')
+    if (!state.done && scroller && scroller.scrollHeight <= scroller.clientHeight + 80) {
+      state.loading = false
+      return loadPage(false)
+    }
   } catch (e) {
     state.error = e.message
     showNotice(`${t('error')}: ${e.message}`)
   } finally {
     state.loading = false
+    updateCounter()
+    // The window may be taller than the page that just arrived: ask again until the grid fills it.
+    setTimeout(maybeMore, 0)
   }
 }
 
@@ -294,7 +304,16 @@ function stepViewer(delta) {
 
 function updateCounter() {
   const total = state.total
-  $('counter').textContent = total ? `${total} ${t('picturesCount')}` : ''
+  if (!total) {
+    $('counter').textContent = ''
+    return
+  }
+  // What is on the screen and what is in the collection are two numbers: "60 из 200" is the honest
+  // answer, and it also says that scrolling brings more (22.11.2026).
+  const loaded = state.items.length
+  $('counter').textContent = loaded < total
+    ? `${loaded} ${t('of')} ${total}`
+    : `${total} ${t('picturesCount')}`
 }
 
 function showNotice(text) {
@@ -316,6 +335,13 @@ function showEmptyIfNeeded() {
   if (state.loading) return
   empty.hidden = false
   empty.textContent = state.q ? t('nothingFound') : (state.error ? `${t('error')}: ${state.error}` : t('empty'))
+}
+
+/** maybeMore asks for the next page when the end of the grid is near. */
+function maybeMore() {
+  const s = $('scroller')
+  if (!s || state.loading || state.done) return
+  if (s.scrollTop + s.clientHeight >= s.scrollHeight - 600) loadPage(false)
 }
 
 function hideEmpty() {
@@ -371,13 +397,11 @@ function bind() {
     }
   })
 
-  // The end of the grid asks for the next page; nothing else scrolls it.
-  const sentinel = $('sentinel')
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadPage(false)
-    }, { rootMargin: '600px' }).observe(sentinel)
-  }
+  // The next page is asked for when the grid is within a screen of its end. A scroll handler, not an
+  // intersection observer: the observer fires once, while the first page is still loading, and never
+  // again - the counter said 200 while the grid held 60 (22.11.2026).
+  $('scroller').addEventListener('scroll', maybeMore, { passive: true })
+  window.addEventListener('resize', maybeMore)
 }
 
 function search(value) {

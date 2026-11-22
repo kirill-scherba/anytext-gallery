@@ -29,11 +29,13 @@
 
   <div class="notice" id="notice" hidden></div>
 
-  <main>
+  <main id="scroller">
     <div class="cards" id="cards"></div>
     <div class="empty" id="empty" hidden></div>
+    <!-- The sentinel lives inside the scrolling element: outside it never crosses anything and the
+         next page is never asked for. -->
+    <div id="sentinel"></div>
   </main>
-  <div id="sentinel"></div>
 
   <footer class="foot"><span id="footInfo"></span></footer>
 
