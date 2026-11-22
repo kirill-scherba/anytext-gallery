@@ -86,6 +86,13 @@ on another — a different crop on every window. The preview now keeps the old g
 **281 : 199** (`aspect-ratio`), so the height follows the width: 326 × 231 measured at a 328 px card,
 ratio 1.412 against the 281/199 = 1.412.
 
+## The dense tile (0.1.9, 22.11.2026)
+
+The dense tile is a square, and the picture inside it had no box of its own: a wide picture got its own
+height and left the rest of the tile empty. The tile's box now fills the card and the picture covers it,
+as in the cards grid — a tile is a picture, not a picture with margins. Measured: tile 161 × 161, image
+161 × 161, `cover`.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
