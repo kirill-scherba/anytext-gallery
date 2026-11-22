@@ -79,6 +79,13 @@ rule: the size is what bmat had, and a picture fills its box.
   **Сделать публичной / Убрать из публичных** (copies into `pub/` beside the picture and answers the
   public address), **Изменить** (the meta editor). The public link is shown under the buttons.
 
+## The proportion of a preview (0.1.8, 22.11.2026)
+
+A fixed height made a column that shares the width into a wide strip: 396 × 199 on one screen, 328 × 199
+on another — a different crop on every window. The preview now keeps the old gallery's proportion,
+**281 : 199** (`aspect-ratio`), so the height follows the width: 326 × 231 measured at a 328 px card,
+ratio 1.412 against the 281/199 = 1.412.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

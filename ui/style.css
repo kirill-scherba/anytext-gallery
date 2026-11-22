@@ -170,8 +170,15 @@ main {
   background: var(--bg);
 }
 
-/* The old gallery's card: a 200 px strip of picture, then the words. */
-.cards.mode-cards .thumb { height: 200px; overflow: hidden; border-bottom: 1px solid var(--line); cursor: zoom-in; }
+/* The preview keeps the old gallery's proportion, 281 x 199, whatever the width of a column: a fixed
+   height made a wide column a wide strip, and the picture was cropped differently on every screen
+   (22.11.2026). */
+.cards.mode-cards .thumb {
+  aspect-ratio: 281 / 199;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  cursor: zoom-in;
+}
 .cards.mode-cards .thumb img { width: 100%; height: 100%; object-fit: cover; }
 .cards.mode-cards .card:hover { border-color: var(--accent); }
 .cards.mode-cards .thumb .ph { position: static; height: 100%; display: flex; align-items: center; justify-content: center; }
