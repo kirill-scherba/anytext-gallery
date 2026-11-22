@@ -39,7 +39,7 @@ const STRINGS = {
     metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
-    backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор',
+    backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор', contents: 'Оглавление',
     articlesError: 'Статьи не пришли',
     savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
     savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
@@ -60,7 +60,7 @@ const STRINGS = {
     metaDescription: 'Description', metaTags: 'Tags (comma separated)',
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
-    backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author',
+    backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author', contents: 'Contents',
     articlesError: 'The articles did not arrive',
     savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
     savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
@@ -695,7 +695,7 @@ async function loadArticles() {
       toc.innerHTML = `<div class="empty">${esc(t('articlesEmpty'))}</div>`
       return
     }
-    toc.innerHTML = ''
+    toc.innerHTML = `<h1>${esc(t('contents'))}</h1>`
     for (const article of list) {
       const row = document.createElement('button')
       row.type = 'button'

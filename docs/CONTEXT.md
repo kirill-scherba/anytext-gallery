@@ -130,6 +130,14 @@ being retired, and that is the direction of the dependency: gallery → installa
 - The duplication of pictures was not the renderer's: the chunker repeats two sentences between chunks,
   and `DocText` glued them as they came. Fixed in AnyText (docs/CONTEXT.md there).
 
+## The heading colour of the old gallery (0.3.5, 22.11.2026)
+
+The memoirs were pleasant to look at partly because of the heading colour: `#58a6ff` on the dark page,
+with `h1` at 2em and `h2` at 1.4em. That colour is now the module's `--heading`: `#58a6ff` in the dark
+theme and `#0969da` in the light one (the same pair as GitHub, where the palette comes from) — the old
+blue on white is unreadable. The contents page got its own `h1` «Оглавление», and a chapter's `h1`/`h2`
+follow the old sizes and margins.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
