@@ -155,10 +155,15 @@ main {
 .cards.mode-compact .info { display: none; }
 
 /* The cards: the size and the shape of the old gallery (bmat.uk) - a preview, a name, a date and
-   what a person wrote about the picture. */
+   what a person wrote about the picture. The card is 281 pixels wide, as there, so a wide window
+   grows the number of columns and not the size of a picture: a stretched tile cropped more of a
+   square picture than the old gallery ever did (22.11.2026). */
 .cards.mode-cards {
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, 281px);
+  justify-content: center;
   gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .cards.mode-cards .card {
@@ -166,8 +171,11 @@ main {
   background: var(--bg);
 }
 
-.cards.mode-cards .thumb { height: 200px; overflow: hidden; border-bottom: 1px solid var(--line); cursor: zoom-in; }
-.cards.mode-cards .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cards.mode-cards .thumb { height: 199px; overflow: hidden; border-bottom: 1px solid var(--line); cursor: zoom-in; background: var(--card); }
+/* contain, not cover: the pictures of this gallery are square, and a 281x199 window with cover lost
+   the top and the bottom of every one of them. The whole picture shows; the bars are the card's own
+   colour. */
+.cards.mode-cards .thumb img { width: 100%; height: 100%; object-fit: contain; }
 .cards.mode-cards .thumb .ph { position: static; height: 100%; display: flex; align-items: center; justify-content: center; }
 
 .card .info { padding: 8px 10px; }

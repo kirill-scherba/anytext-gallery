@@ -62,6 +62,14 @@ broken image, and a broken image looks like a failure (22.11.2026).
   the collection root — renamed, moved to pub/ or trash), 0 failures. Search now finds pictures by
   what is written about them.
 
+## The size of a card (22.11.2026)
+
+The cards grid stretched its columns to the window, so a tile on a wide screen was wider than in the
+old gallery and `cover` cut more of a square picture. Now the card is exactly **281 × 199** as in
+bmat.uk, the grid keeps the count of columns growing and not the size of a tile, and the picture is
+drawn with `contain`: the whole picture, bars in the card's own colour. «Как в bmat» by size, «не
+подрезает» by fit — they are different things, and this is the combination the owner asked for.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
