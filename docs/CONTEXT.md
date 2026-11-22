@@ -65,10 +65,10 @@ broken image, and a broken image looks like a failure (22.11.2026).
 ## The size of a card (22.11.2026)
 
 The cards grid stretched its columns to the window, so a tile on a wide screen was wider than in the
-old gallery and `cover` cut more of a square picture. Now the card is exactly **281 × 199** as in
-bmat.uk, the grid keeps the count of columns growing and not the size of a tile, and the picture is
-drawn with `contain`: the whole picture, bars in the card's own colour. «Как в bmat» by size, «не
-подрезает» by fit — they are different things, and this is the combination the owner asked for.
+old gallery and `cover` cut more of a square picture than there. The card is now exactly **281 × 199**
+as in bmat.uk and the picture fills it (`cover`): the grid grows the number of columns, not the size
+of a tile, so the crop is the same as the old gallery's and does not grow with the window. The owner's
+rule: the size is what bmat had, and a picture fills its box.
 
 ## Next steps
 
