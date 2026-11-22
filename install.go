@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -72,9 +73,9 @@ type Picture struct {
 	Doc    string `json:"doc"`
 	Name   string `json:"name"`
 	Folder string `json:"folder,omitempty"`
-	// Vision says the installation described the picture with a model (the standard place for a
-	// picture's description); HasDesc is the same fact for a screen that only needs a badge.
-	Vision  bool `json:"vision"`
+	Size   int64  `json:"size,omitempty"`
+	// HasDesc says the installation holds a description of this picture in its index (the standard
+	// place); the gallery's own text lives in memory-store and is shown in the next step.
 	HasDesc bool `json:"has_description"`
 }
 
@@ -108,44 +109,54 @@ func (c *installClient) BucketRoot(ctx context.Context, bucket string) (string, 
 	return "", fmt.Errorf("коллекция %q не найдена", bucket)
 }
 
-// Pictures reads the collection and answers with the images of its root folder, sorted by name: the
+// Pictures reads the files of the collection and answers with its images, sorted by name: the
 // generated files carry their time in the name, so the order is the history of the gallery.
+//
+// It asks for the FILES, not for the index: a picture without a description has no text, the scan
+// skips it as "no_text", and it never becomes a document. The old gallery listed a directory and
+// that was right; doc.list is the same list, with the keys the picture endpoints want (22.11.2026).
 func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Picture, error) {
-	raw, err := c.call(ctx, "rag.list", map[string]any{"bucket": bucket})
+	raw, err := c.call(ctx, "doc.list", map[string]any{
+		"bucket": bucket,
+		// Everything in one answer: a gallery grid pages in the browser, and a hundred documents
+		// per request would make the counter lie about the collection.
+		"limit": 10000,
+	})
 	if err != nil {
 		return nil, err
 	}
 	var answer struct {
-		Total   int `json:"total"`
-		Results []struct {
-			Doc            string `json:"doc"`
-			Name           string `json:"name"`
-			Folder         string `json:"folder"`
-			Vision         bool   `json:"vision"`
-			HasText        bool   `json:"has_text"`
-			HasDescription bool   `json:"has_description"`
-		} `json:"results"`
+		Documents []struct {
+			Key    string `json:"key"`
+			Name   string `json:"name"`
+			Folder string `json:"folder"`
+			Kind   string `json:"kind"`
+			State  string `json:"state"`
+			Size   int64  `json:"size"`
+			// A picture that has a description in the index says so; a person sees which ones do.
+			HasDescription bool `json:"has_description"`
+		} `json:"documents"`
 	}
 	if err := json.Unmarshal(raw, &answer); err != nil {
-		return nil, fmt.Errorf("список документов не разобран: %w", err)
+		return nil, fmt.Errorf("список файлов не разобран: %w", err)
 	}
-	out := make([]Picture, 0, len(answer.Results))
-	for _, d := range answer.Results {
-		doc := strings.TrimSpace(d.Doc)
-		if doc == "" || strings.HasPrefix(doc, "links/") {
+	out := make([]Picture, 0, len(answer.Documents))
+	for _, d := range answer.Documents {
+		key := strings.TrimSpace(d.Key)
+		if key == "" || d.State == "excluded" {
 			continue
 		}
-		if !imageExts[strings.ToLower(pathExt(doc))] {
+		if !strings.EqualFold(d.Kind, "image") && !imageExts[strings.ToLower(pathExt(d.Name))] {
 			continue
 		}
-		if root != "" && d.Folder != root {
+		if root != "" && filepath.Clean(d.Folder) != filepath.Clean(root) {
 			continue
 		}
 		out = append(out, Picture{
-			Doc:     doc,
+			Doc:     key,
 			Name:    d.Name,
 			Folder:  d.Folder,
-			Vision:  d.Vision,
+			Size:    d.Size,
 			HasDesc: d.HasDescription,
 		})
 	}
@@ -153,10 +164,10 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 	return out, nil
 }
 
-// pathExt is the lowercase extension of a document key.
-func pathExt(doc string) string {
-	if i := strings.LastIndex(doc, "."); i >= 0 {
-		return doc[i:]
+// pathExt is the lowercase extension of a document name.
+func pathExt(name string) string {
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		return name[i:]
 	}
 	return ""
 }

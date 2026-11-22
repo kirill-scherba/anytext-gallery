@@ -221,8 +221,11 @@ async function loadThumb(card) {
   if (card.dataset.loaded === '1') return
   card.dataset.loaded = '1'
   const doc = card.dataset.doc
+  // An SVG is not a photograph: the preview endpoint renders pictures, so a vector is taken whole
+  // and the browser draws it.
+  const vector = /\.svg$/i.test(doc)
   try {
-    const res = await runFetch(() => fetch(thumbURL(doc, 400)))
+    const res = await runFetch(() => fetch(vector ? fileURL(doc) : thumbURL(doc, 400)))
     if (!res.ok) throw new Error(res.status)
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)

@@ -21,6 +21,16 @@ database (0.1.0, 22.11.2026).
   writes `<file>/vision`) — «не переносить, а копировать», because both galleries live side by side
   for a while. When the old gallery is closed, the memory copies are cleaned.
 
+## Lesson of 22.11.2026: the index is not the collection
+
+The first version listed `rag.list` and showed 69 pictures of 200. The reason is a rule of the scan:
+a picture without a description has no text, the scan skips it as `no_text`, and it never becomes a
+document. The old gallery listed a directory, and that was right. `doc.list` is the same list with
+the keys the picture endpoints want — files with their state and kind, not indexed documents.
+
+The same scan result explains why the collection "loses" pictures after a reindex: nothing is lost,
+they were never indexed. A gallery must never be built on the full-text index.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

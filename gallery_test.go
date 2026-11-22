@@ -41,7 +41,7 @@ func (f *fakeInstall) handler() http.HandlerFunc {
 		switch req.Command {
 		case "bucket.list":
 			result = f.bucket
-		case "rag.list":
+		case "doc.list":
 			result = f.docs
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"result": result})
@@ -63,19 +63,18 @@ func collection() any {
 	}
 }
 
-// documents are the answer of rag.list: pictures in the root, copies in pub/, the trash, a
-// subfolder, and two files that are not pictures at all.
+// documents are the answer of doc.list: pictures in the root, copies in pub/, the trash, a
+// subfolder, an excluded file and two files that are not pictures at all.
 func documents() any {
 	return map[string]any{
-		"total": 7,
-		"results": []map[string]any{
-			{"doc": "галерея/i/b.png", "name": "b.png", "folder": "/srv/gallery/i", "vision": true, "has_description": true},
-			{"doc": "галерея/i/a.png", "name": "a.png", "folder": "/srv/gallery/i"},
-			{"doc": "галерея/i/pub/c.png", "name": "c.png", "folder": "/srv/gallery/i/pub"},
-			{"doc": "галерея/i/trash/d.png", "name": "d.png", "folder": "/srv/gallery/i/trash"},
-			{"doc": "галерея/i/rinok/e.jpg", "name": "e.jpg", "folder": "/srv/gallery/i/rinok"},
-			{"doc": "галерея/i/readme.md", "name": "readme.md", "folder": "/srv/gallery/i"},
-			{"doc": "links/page", "name": "page", "folder": ""},
+		"documents": []map[string]any{
+			{"key": "галерея/i/b.png", "name": "b.png", "folder": "/srv/gallery/i", "kind": "image", "has_description": true},
+			{"key": "галерея/i/a.png", "name": "a.png", "folder": "/srv/gallery/i", "kind": "image"},
+			{"key": "галерея/i/pub/c.png", "name": "c.png", "folder": "/srv/gallery/i/pub", "kind": "image"},
+			{"key": "галерея/i/trash/d.png", "name": "d.png", "folder": "/srv/gallery/i/trash", "kind": "image"},
+			{"key": "галерея/i/rinok/e.jpg", "name": "e.jpg", "folder": "/srv/gallery/i/rinok", "kind": "image"},
+			{"key": "галерея/i/gone.png", "name": "gone.png", "folder": "/srv/gallery/i", "kind": "image", "state": "excluded"},
+			{"key": "галерея/i/readme.md", "name": "readme.md", "folder": "/srv/gallery/i", "kind": "text"},
 		},
 	}
 }
@@ -104,7 +103,7 @@ func TestPicturesAreTheRootImages(t *testing.T) {
 	if pics[0].Name != "a.png" || pics[1].Name != "b.png" {
 		t.Errorf("order = %q, %q (want by name)", pics[0].Name, pics[1].Name)
 	}
-	if !pics[1].Vision || !pics[1].HasDesc {
+	if !pics[1].HasDesc {
 		t.Errorf("the described picture lost its flag: %+v", pics[1])
 	}
 }
