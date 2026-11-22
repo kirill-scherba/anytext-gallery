@@ -138,6 +138,22 @@ theme and `#0969da` in the light one (the same pair as GitHub, where the palette
 blue on white is unreadable. The contents page got its own `h1` «Оглавление», and a chapter's `h1`/`h2`
 follow the old sizes and margins.
 
+## The article editor (0.4.1, 22.11.2026)
+
+- A chapter page carries «Редактировать» next to «к статьям»: the dialog shows the markdown of the file
+  (`doc.text {raw: true}`), not the extracted text, and saves it back with `doc.save_raw` of AnyText.
+  The markdown stays markdown — a picture is named by its file, `![подпись](img_123.png)`.
+- The right to save comes from the installation: it puts `X-AnyText-Rights` on every proxied request.
+  A viewer does not see the button at all; a `POST /api/article` without the right is refused with 403.
+- After a save the module forgets its parsed chapters (`articlesReader.Forget`), so the page is built
+  from the file again instead of from the two-minute cache.
+- The page's base address is the header or `/`: reached on its own port the module serves at the root,
+  and a guessed `/api/module/gallery` prefix pointed the screen's relative calls at nothing.
+- The empty text is refused by the installation (`doc.save_raw`): a chapter is not erased by clearing
+  a field — that lesson cost a memoir chapter on the same day.
+- Verified on a copy: a temporary collection in `/tmp` with a copy of a chapter, a second instance of
+  the module on its own port, the edit saved and the page rebuilt; the real chapter's md5 unchanged.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

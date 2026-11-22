@@ -68,6 +68,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("POST /api/trash", a.trash)
 	mux.HandleFunc("GET /api/articles", a.articlesList)
 	mux.HandleFunc("GET /api/article", a.article)
+	mux.HandleFunc("POST /api/article", a.saveArticle)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
 	mux.HandleFunc("GET /ui/", a.page)
 	return mux
@@ -487,3 +488,78 @@ func (a *app) article(w http.ResponseWriter, r *http.Request) {
 
 // errNoArticles says the module has no long-form collection configured.
 var errNoArticles = errors.New("коллекция статей не настроена")
+
+// saveArticle writes a chapter back: the editor shows markdown, and the installation writes the file
+// and re-indexes it at once (doc.save_raw). Only a person with the write right may do it — the module
+// trusts the header the installation puts on every request.
+func (a *app) saveArticle(w http.ResponseWriter, r *http.Request) {
+	if !mayWrite(r) {
+		writeError(w, http.StatusForbidden, errors.New("эта роль не позволяет править статьи"))
+		return
+	}
+	if a.articles == nil {
+		writeError(w, http.StatusNotFound, errNoArticles)
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("тело запроса не разобрано: %w", err))
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		writeError(w, http.StatusBadRequest, errors.New("нужна статья (name)"))
+		return
+	}
+	// An empty text is a slip, not a decision: the chapter would stay, emptied, and nobody would
+	// notice until the next read. Erasing a document is another button.
+	if strings.TrimSpace(in.Text) == "" {
+		writeError(w, http.StatusBadRequest, errors.New("пустой текст не сохраняется"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+
+	// The document key comes from the chapter list: a name alone is not a key of the collection.
+	list, err := a.articles.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	doc := ""
+	for _, article := range list {
+		if article.Name == in.Name {
+			doc = article.Doc
+			break
+		}
+	}
+	if doc == "" {
+		writeError(w, http.StatusNotFound, fmt.Errorf("статья не найдена: %s", in.Name))
+		return
+	}
+	if _, err := a.install.call(ctx, "doc.save_raw", map[string]any{
+		"bucket": a.articles.bucket, "doc": doc, "text": in.Text,
+	}); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	a.articles.Forget()
+	writeJSON(w, http.StatusOK, map[string]any{"name": in.Name, "doc": doc, "saved": true})
+}
+
+// mayWrite answers whether the person behind this request holds the write right. An empty header is the
+// owner at the machine — the installation sends it with every request it proxies.
+func mayWrite(r *http.Request) bool {
+	rights := strings.TrimSpace(r.Header.Get("X-AnyText-Rights"))
+	if rights == "" {
+		return true
+	}
+	for _, right := range strings.Split(rights, ",") {
+		if strings.EqualFold(strings.TrimSpace(right), "write") {
+			return true
+		}
+	}
+	return false
+}

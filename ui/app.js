@@ -40,6 +40,9 @@ const STRINGS = {
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
     backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор', contents: 'Оглавление',
+    editArticle: 'Редактировать',
+    articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
+    articleSaved: 'Глава сохранена',
     articlesError: 'Статьи не пришли',
     savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
     savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
@@ -61,6 +64,9 @@ const STRINGS = {
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
     backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author', contents: 'Contents',
+    editArticle: 'Edit',
+    articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
+    articleSaved: 'The chapter is saved',
     articlesError: 'The articles did not arrive',
     savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
     savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
@@ -421,6 +427,8 @@ async function trashPicture(item, card) {
 
 // --- what a person writes about a picture ------------------------------------------------------
 
+let editingArticle = null
+
 let editingMeta = null
 
 async function openMeta(item) {
@@ -503,6 +511,43 @@ async function deleteMeta() {
   } catch (e) {
     $('metaError').textContent = e.message
     $('metaError').hidden = false
+  }
+}
+
+/** openArticleEditor shows the markdown of the chapter, as the file holds it. */
+function openArticleEditor() {
+  if (!editingArticle) return
+  $('articleFile').textContent = editingArticle.name
+  const text = $('articleText')
+  text.value = editingArticle.source || ''
+  $('articleError').hidden = true
+  $('articleEditor').showModal()
+  // A long chapter must open at its first line, not at the caret's end.
+  text.setSelectionRange(0, 0)
+  text.scrollTop = 0
+  text.focus()
+}
+
+async function saveArticleEditor(event) {
+  event.preventDefault()
+  if (!editingArticle) return
+  const error = $('articleError')
+  error.hidden = true
+  const button = $('articleSave')
+  button.disabled = true
+  try {
+    await api('api/article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editingArticle.name, text: $('articleText').value }),
+    })
+    $('articleEditor').close()
+    await openArticle(editingArticle.name)
+  } catch (e) {
+    error.textContent = e.message
+    error.hidden = false
+  } finally {
+    button.disabled = false
   }
 }
 
@@ -614,6 +659,10 @@ function bind() {
     tab.addEventListener('click', () => showTab(tab.dataset.tab))
   }
   $('storyBack').addEventListener('click', closeArticle)
+  if (document.body.dataset.write === 'false') $('storyEdit').hidden = true
+  $('storyEdit').addEventListener('click', openArticleEditor)
+  $('articleForm').addEventListener('submit', saveArticleEditor)
+  $('articleCancel').addEventListener('click', () => $('articleEditor').close())
 
   window.addEventListener('storage', (event) => {
     if (event.key === 'anytext-theme') applyTheme()
@@ -730,6 +779,7 @@ async function openArticle(name) {
     $('storyTitle').textContent = page.title || name
     const date = formatDate(page.date)
     $('storyMeta').textContent = [date, page.place].filter(Boolean).join(' · ')
+    editingArticle = page
     $('storyBody').innerHTML = page.html || ''
     const docs = page.docs || {}
     for (const img of $('storyBody').querySelectorAll('img[data-gallery]')) {

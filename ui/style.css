@@ -256,7 +256,21 @@ main {
 .story .story-body blockquote { border-left: 3px solid var(--line); margin: 12px 0; padding: 2px 12px; color: var(--muted); }
 .story .story-body hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 .story .story-body a { color: var(--accent); }
-.story .back { margin-bottom: 6px; }
+.story .story-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.story .story-bar .spacer { flex: 1 1 auto; }
+
+dialog .source {
+  width: 100%;
+  min-height: 50vh;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+dialog { width: min(880px, calc(100vw - 40px)); }
 
 /* --- the meta editor ------------------------------------------------------------------------- */
 

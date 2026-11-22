@@ -27,19 +27,22 @@ var (
 
 // page serves the screen with the one thing the server knows: where the module is mounted.
 func (a *app) page(w http.ResponseWriter, r *http.Request) {
-	prefix := r.Header.Get("X-AnyText-Prefix")
-	if prefix == "" {
-		prefix = "/api/module/gallery"
-	}
+	// The installation says where the module is mounted. No header means the module was reached on
+	// its own port, where it serves at the root: a base of "/" keeps the relative calls of the screen
+	// (api/article, and the rest) pointing at the module itself.
+	prefix := strings.TrimRight(r.Header.Get("X-AnyText-Prefix"), "/")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = pageTemplate.Execute(w, map[string]any{
-		"Prefix":  strings.TrimRight(prefix, "/"),
-		"Person":  r.Header.Get("X-AnyText-Person"),
-		"Bucket":  a.bucket,
-		"Version": version,
-		"Style":   pageStyle,
-		"Script":  pageScript,
+		"Prefix": prefix,
+		// The button that opens the editor is shown only to a person who may write: a viewer should
+		// not find out from a refusal (22.11.2026).
+		"CanWrite": mayWrite(r),
+		"Person":   r.Header.Get("X-AnyText-Person"),
+		"Bucket":   a.bucket,
+		"Version":  version,
+		"Style":    pageStyle,
+		"Script":   pageScript,
 	})
 }
 

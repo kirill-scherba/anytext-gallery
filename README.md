@@ -46,6 +46,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | migrate | `POST /api/migrate` copies every known description into the installation once |
 | articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
 | story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text, nobody fills it by hand |
+| article editor | «Редактировать» on a chapter opens its markdown — the file as it is, not the extracted text — and saves it back with `doc.save_raw`; the button is offered only to a person who holds the write right |
 
 The screen is **one self-contained document**: styles and script inside the page. A module split into
 files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4).
@@ -57,7 +58,14 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 | `GET /health` | `{"status":"ok"}` |
 | `GET /api/status` | module version, installation address, collection, how many pictures, why not |
 | `GET /api/config` | the collection the module works with |
-| `GET /api/images?offset=&limit=&q=` | one page of the grid: `{bucket, total, offset, limit, items}` |
+| `GET /api/images?offset=&limit=&q=&sort=` | one page of the grid: `{bucket, total, offset, limit, items}` |
+| `GET /api/meta?name=` · `POST` · `DELETE` | the description of a picture in `memory/gallery/meta/<file>`, copied into the installation |
+| `GET`/`POST`/`DELETE /api/public` | the public copy of a picture (`https://bmat.uk/i/pub/<file>`) |
+| `POST /api/trash` | a picture goes to the trash of the installation, the file stays |
+| `POST /api/migrate` | every known description is copied into the installation once |
+| `GET /api/articles` | the chapters of the `-articles` collection: title, author, date, first line, pictures |
+| `GET /api/article?name=` | one chapter: `{title, html, source, docs}` — `source` is the markdown the editor shows |
+| `POST /api/article` `{name, text}` | the chapter is written back with `doc.save_raw`; needs the write right, refused for a picture or an empty text |
 
 A picture is `{doc, name, folder, vision, has_description}` — `doc` is the document key the picture
 endpoints expect.

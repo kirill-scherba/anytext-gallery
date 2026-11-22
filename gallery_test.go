@@ -235,3 +235,81 @@ func names(pics []Picture) []string {
 	}
 	return out
 }
+
+// TestWriteRightDecidesTheButton: the installation names the rights of the person on every proxied
+// request, and a viewer must not be offered an editor that would only refuse him (22.11.2026).
+func TestWriteRightDecidesTheButton(t *testing.T) {
+	a := &app{install: newInstallClient("http://127.0.0.1:1"), bucket: "галерея"}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	for _, tt := range []struct {
+		rights string
+		want   string
+	}{
+		{"read", `data-write="false"`},
+		{"read,write", `data-write="true"`},
+		{"read, write, admin", `data-write="true"`},
+		{"", `data-write="true"`}, // no header: the person at the machine
+	} {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/ui/", nil)
+		if tt.rights != "" {
+			req.Header.Set("X-AnyText-Rights", tt.rights)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("rights %q: %v", tt.rights, err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if !strings.Contains(string(raw), tt.want) {
+			t.Errorf("rights %q: the page does not say %s", tt.rights, tt.want)
+		}
+	}
+
+	// The same right decides the saving itself: the header is not an ornament.
+	body := strings.NewReader(`{"name":"chapter.md","text":"# T"}`)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/article", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-AnyText-Rights", "read")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("a viewer's save answered %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
+}
+
+// TestSaveArticleRefusals: what must never reach the installation - a chapter cleared to nothing,
+// and a save by a person whose rights do not include writing.
+func TestSaveArticleRefusals(t *testing.T) {
+	install := newInstallClient("http://127.0.0.1:1")
+	a := &app{install: install, bucket: "галерея", articles: newArticlesReader(install, "мемуары")}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	for _, tt := range []struct {
+		name   string
+		body   string
+		rights string
+		want   int
+	}{
+		{"empty text", `{"name":"chapter.md","text":"  \n\n "}`, "write", http.StatusBadRequest},
+		{"no name", `{"text":"# T"}`, "write", http.StatusBadRequest},
+		{"a viewer", `{"name":"chapter.md","text":"# T"}`, "read", http.StatusForbidden},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/article", strings.NewReader(tt.body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-AnyText-Rights", tt.rights)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		res.Body.Close()
+		if res.StatusCode != tt.want {
+			t.Errorf("%s: answered %d, want %d", tt.name, res.StatusCode, tt.want)
+		}
+	}
+}

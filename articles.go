@@ -29,7 +29,9 @@ const articleCacheTTL = 2 * time.Minute
 
 // Article is one chapter: what the table of contents needs and what the page is built from.
 type Article struct {
-	Name        string   `json:"name"`
+	Name string `json:"name"`
+	// Doc is the document key: the editor needs it to write the file back.
+	Doc         string   `json:"doc,omitempty"`
 	Title       string   `json:"title"`
 	Date        string   `json:"date,omitempty"`
 	Place       string   `json:"place,omitempty"`
@@ -39,6 +41,7 @@ type Article struct {
 
 	sortDate string
 	text     string
+	source   string
 }
 
 // articlesReader keeps the parsed articles and the picture index for a couple of minutes: a page of
@@ -131,6 +134,8 @@ func (r *articlesReader) List(ctx context.Context) ([]Article, error) {
 			continue // one unreadable chapter must not hide the rest
 		}
 		article := parseArticle(d.Name, text)
+		article.Doc = d.Key
+		article.source = text
 		list = append(list, article)
 		for _, picture := range article.Pictures {
 			// One picture may be in several chapters; the table shows the newest first, so the
@@ -149,6 +154,13 @@ func (r *articlesReader) List(ctx context.Context) ([]Article, error) {
 
 	r.list, r.byName, r.loadedAt = list, byName, time.Now()
 	return r.list, nil
+}
+
+// Forget drops the parsed articles: an edited chapter must be read from the file again.
+func (r *articlesReader) Forget() {
+	r.mu.Lock()
+	r.list, r.byName, r.loadedAt = nil, nil, time.Time{}
+	r.mu.Unlock()
 }
 
 // Story answers the chapter a picture is in, if any.
@@ -195,9 +207,11 @@ func (r *articlesReader) Article(ctx context.Context, name string) (map[string]a
 			return nil, err
 		}
 		return map[string]any{
-			"name": article.Name, "title": article.Title, "date": article.Date,
+			"name": article.Name, "doc": article.Doc, "title": article.Title, "date": article.Date,
 			"place": article.Place, "author": article.Author, "html": html,
 			"pictures": article.Pictures,
+			// The source is what an editor shows: markdown as the file holds it.
+			"source": article.source,
 		}, nil
 	}
 	return nil, fmt.Errorf("статья не найдена: %s", name)

@@ -9,7 +9,7 @@
        <link> or a <script src>, and through the relay those requests are refused. -->
   <style>{{.Style}}</style>
 </head>
-<body>
+<body data-write="{{.CanWrite}}">
   <header class="topbar">
     <div class="title">
       <span class="name" data-i18n="gallery">Галерея</span>
@@ -42,7 +42,11 @@
     <!-- The table of contents of the memoirs, and one chapter on a page. -->
     <div class="toc" id="toc" hidden></div>
     <article class="story" id="story" hidden>
-      <button type="button" class="text back" id="storyBack">‹ <span data-i18n="backToArticles">к статьям</span></button>
+      <div class="story-bar">
+        <button type="button" class="text back" id="storyBack">‹ <span data-i18n="backToArticles">к статьям</span></button>
+        <span class="spacer"></span>
+        <button type="button" class="text primary" id="storyEdit" data-i18n="editArticle">Редактировать</button>
+      </div>
       <h1 id="storyTitle"></h1>
       <p class="story-meta" id="storyMeta"></p>
       <div class="story-body" id="storyBody"></div>
@@ -103,6 +107,22 @@
         <span class="spacer"></span>
         <button type="button" class="text" id="metaCancel" data-i18n="cancel">Отмена</button>
         <button type="submit" class="text primary" id="metaSave" data-i18n="save">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- The editor of a chapter: the markdown as the file holds it. -->
+  <dialog id="articleEditor">
+    <form id="articleForm" novalidate>
+      <h2 data-i18n="editArticle">Редактировать</h2>
+      <p class="muted" id="articleFile"></p>
+      <textarea id="articleText" class="source" spellcheck="false"></textarea>
+      <p class="hint" data-i18n="articleHint">Markdown сохраняется в файл главы как есть; картинки достатточно указать именем файла: ![подпись](img_123.png).</p>
+      <p class="error" id="articleError" hidden></p>
+      <div class="buttons">
+        <span class="spacer"></span>
+        <button type="button" class="text" id="articleCancel" data-i18n="cancel">Отмена</button>
+        <button type="submit" class="text primary" id="articleSave" data-i18n="save">Сохранить</button>
       </div>
     </form>
   </dialog>
