@@ -29,7 +29,8 @@ const STRINGS = {
     searchPlaceholder: 'поиск по имени', refresh: 'Обновить',
     loading: 'Загрузка…', empty: 'В этой коллекции пока нет картинок',
     nothingFound: 'Ничего не найдено', error: 'Картинки не пришли',
-    picturesCount: 'картинок', of: 'из', articlesSoon: 'Статьи — следующий шаг',
+    picturesCount: 'картинок', of: 'из',
+    sortTitle: 'порядок', sortNew: 'новые сверху', sortName: 'по имени', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
   },
   en: {
@@ -37,7 +38,8 @@ const STRINGS = {
     searchPlaceholder: 'search by name', refresh: 'Refresh',
     loading: 'Loading…', empty: 'No pictures in this collection yet',
     nothingFound: 'Nothing found', error: 'The pictures did not arrive',
-    picturesCount: 'pictures', of: 'of', articlesSoon: 'Articles are the next step',
+    picturesCount: 'pictures', of: 'of',
+    sortTitle: 'order', sortNew: 'newest first', sortName: 'by name', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
   },
 }
@@ -92,6 +94,7 @@ const state = {
   total: 0,
   offset: 0,
   q: '',
+  sort: 'new',
   loading: false,
   done: false,
   error: '',
@@ -153,7 +156,7 @@ async function loadPage(reset) {
   }
   state.loading = true
   try {
-    const q = new URLSearchParams({ offset: String(state.offset), limit: String(LIMIT) })
+    const q = new URLSearchParams({ offset: String(state.offset), limit: String(LIMIT), sort: state.sort })
     if (state.q) q.set('q', state.q)
     const page = await api('api/images?' + q.toString())
     state.total = page.total
@@ -267,14 +270,23 @@ async function showViewer() {
   box.hidden = false
   $('viewerName').textContent = item.name
   const img = $('viewerImage')
+  const spinner = $('viewerSpinner')
+  // While the picture is on its way the viewer shows a turnstile, not a broken image: a missing src
+  // is drawn as a torn page and looks like a failure (22.11.2026).
+  img.hidden = true
   img.removeAttribute('src')
   img.alt = item.name
+  spinner.hidden = false
   try {
     const res = await runFetch(() => fetch(fileURL(item.doc)))
     if (!res.ok) throw new Error(res.status)
     const blob = await res.blob()
-    img.src = URL.createObjectURL(blob)
+    const url = URL.createObjectURL(blob)
+    img.onload = () => { spinner.hidden = true; img.hidden = false }
+    img.src = url
   } catch (e) {
+    spinner.hidden = true
+    img.hidden = false
     img.alt = `${item.name} — ${t('error')}`
   }
   $('viewerPrev').disabled = viewerIndex <= 0
@@ -357,6 +369,17 @@ function applyTexts() {
 
 function bind() {
   $('refresh').addEventListener('click', () => { hideNotice(); search('') })
+
+  try {
+    const stored = localStorage.getItem('anytextGallery.sort')
+    if (stored === 'name' || stored === 'new') state.sort = stored
+  } catch (e) { /* private mode */ }
+  $('sort').value = state.sort
+  $('sort').addEventListener('change', (event) => {
+    state.sort = event.target.value === 'name' ? 'name' : 'new'
+    try { localStorage.setItem('anytextGallery.sort', state.sort) } catch (e) { /* private mode */ }
+    loadPage(true)
+  })
 
   let timer = null
   $('search').addEventListener('input', (event) => {

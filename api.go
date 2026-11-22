@@ -99,6 +99,10 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		limit = 240
 	}
 	filter := strings.ToLower(strings.TrimSpace(q.Get("q")))
+	mode := q.Get("sort")
+	if mode != "name" {
+		mode = "new"
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
@@ -107,6 +111,7 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	sortPictures(pics, mode)
 	if filter != "" {
 		kept := pics[:0]
 		for _, p := range pics {

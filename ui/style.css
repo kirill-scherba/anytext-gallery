@@ -74,6 +74,13 @@ button.text:hover { background: var(--soft); border-color: var(--line); }
 button.text.active { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--line); font-weight: 600; }
 button.text:disabled { opacity: 0.45; cursor: default; }
 
+.sort {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: var(--bg);
+}
+
 .search {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -161,6 +168,20 @@ main {
 .viewer figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; max-height: 100%; }
 .viewer img { max-width: min(1600px, 92vw); max-height: 86vh; object-fit: contain; border-radius: 6px; }
 .viewer figcaption { color: #e9ecef; font-size: 13px; word-break: break-all; text-align: center; }
+
+/* The turnstile while a picture comes: a spinner, not a torn page. */
+.spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner[hidden] { display: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .viewer-nav, .viewer-close {
   border: 1px solid rgba(255, 255, 255, 0.25);

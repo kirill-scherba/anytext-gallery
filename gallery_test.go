@@ -208,3 +208,30 @@ func TestPageIsSelfContained(t *testing.T) {
 		}
 	}
 }
+
+// TestSortPictures: the grid shows the newest first, and "by name" is the other order a person may
+// want. A picture with no time (an installation older than 0.4.18) falls back to its name.
+func TestSortPictures(t *testing.T) {
+	pics := []Picture{
+		{Name: "b.png", ModTime: "2026-11-01T10:00:00Z"},
+		{Name: "a.png", ModTime: "2026-11-03T10:00:00Z"},
+		{Name: "c.png", ModTime: "2026-11-02T10:00:00Z"},
+		{Name: "old.png"},
+	}
+	sortPictures(pics, "new")
+	if pics[0].Name != "a.png" || pics[1].Name != "c.png" || pics[2].Name != "b.png" || pics[3].Name != "old.png" {
+		t.Errorf("new-first order = %v", names(pics))
+	}
+	sortPictures(pics, "name")
+	if pics[0].Name != "a.png" || pics[1].Name != "b.png" || pics[2].Name != "c.png" || pics[3].Name != "old.png" {
+		t.Errorf("by-name order = %v", names(pics))
+	}
+}
+
+func names(pics []Picture) []string {
+	out := make([]string, 0, len(pics))
+	for _, p := range pics {
+		out = append(out, p.Name)
+	}
+	return out
+}

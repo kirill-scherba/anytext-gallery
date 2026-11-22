@@ -74,6 +74,9 @@ type Picture struct {
 	Name   string `json:"name"`
 	Folder string `json:"folder,omitempty"`
 	Size   int64  `json:"size,omitempty"`
+	// ModTime is when the file was last changed: the grid shows the newest first, because a name
+	// does not say when a picture appeared (22.11.2026).
+	ModTime string `json:"mod_time,omitempty"`
 	// HasDesc says the installation holds a description of this picture in its index (the standard
 	// place); the gallery's own text lives in memory-store and is shown in the next step.
 	HasDesc bool `json:"has_description"`
@@ -127,12 +130,13 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 	}
 	var answer struct {
 		Documents []struct {
-			Key    string `json:"key"`
-			Name   string `json:"name"`
-			Folder string `json:"folder"`
-			Kind   string `json:"kind"`
-			State  string `json:"state"`
-			Size   int64  `json:"size"`
+			Key     string `json:"key"`
+			Name    string `json:"name"`
+			Folder  string `json:"folder"`
+			Kind    string `json:"kind"`
+			State   string `json:"state"`
+			Size    int64  `json:"size"`
+			ModTime string `json:"mod_time"`
 			// A picture that has a description in the index says so; a person sees which ones do.
 			HasDescription bool `json:"has_description"`
 		} `json:"documents"`
@@ -157,11 +161,26 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			Name:    d.Name,
 			Folder:  d.Folder,
 			Size:    d.Size,
+			ModTime: d.ModTime,
 			HasDesc: d.HasDescription,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// sortPictures orders the grid: the newest first (what a gallery wants), or by name.
+func sortPictures(pics []Picture, mode string) {
+	if mode == "name" {
+		sort.SliceStable(pics, func(i, j int) bool { return pics[i].Name < pics[j].Name })
+		return
+	}
+	sort.SliceStable(pics, func(i, j int) bool {
+		if pics[i].ModTime != pics[j].ModTime {
+			return pics[i].ModTime > pics[j].ModTime // RFC 3339 sorts as text
+		}
+		return pics[i].Name < pics[j].Name
+	})
 }
 
 // pathExt is the lowercase extension of a document name.

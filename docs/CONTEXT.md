@@ -39,6 +39,16 @@ the scroll comes within a screen of the end, and a page that does not fill the w
 next one itself. The counter says "120 из 200" while more remain — the number of pictures drawn and
 the number in the collection are two numbers, and both belong on the screen.
 
+## The order of the grid (22.11.2026)
+
+By name the grid looked random: the gallery's files carry three different naming schemes
+(`img_<time>.png`, `cf_crop_<what>_<time>.png`, `cat2.png`). The grid now shows the newest file first
+(`mod_time`, which the installation gained in the same change) with a switch to "by name". An
+installation older than that answers without times, and the module falls back to names.
+
+The viewer shows a spinner while the picture travels, not a torn page: a missing `src` is drawn as a
+broken image, and a broken image looks like a failure (22.11.2026).
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
