@@ -84,10 +84,12 @@ type Picture struct {
 	// ModTime is when the file was last changed: the grid shows the newest first, because a name
 	// does not say when a picture appeared (22.11.2026).
 	ModTime string `json:"mod_time,omitempty"`
-	// HasDesc says the installation holds a description of this picture in its index (the standard
-	// place); Meta is what a person wrote about it in the gallery.
-	HasDesc bool  `json:"has_description"`
-	Meta    *Meta `json:"meta,omitempty"`
+	// Description is the text the installation holds about the picture - the standard place, where
+	// "Describe with a model" and this gallery both write. Meta is the gallery's own record, kept for
+	// the old gallery while it lives.
+	Description string `json:"description,omitempty"`
+	HasDesc     bool   `json:"has_description"`
+	Meta        *Meta  `json:"meta,omitempty"`
 }
 
 // imageExts are the files a gallery shows. Everything else in the collection (markdown, audio,
@@ -144,8 +146,9 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			Kind    string `json:"kind"`
 			State   string `json:"state"`
 			Size    int64  `json:"size"`
-			Path    string `json:"path"`
-			ModTime string `json:"mod_time"`
+			Path        string `json:"path"`
+			ModTime     string `json:"mod_time"`
+			Description string `json:"description"`
 			// A picture that has a description in the index says so; a person sees which ones do.
 			HasDescription bool `json:"has_description"`
 		} `json:"documents"`
@@ -170,8 +173,9 @@ func (c *installClient) Pictures(ctx context.Context, bucket, root string) ([]Pi
 			Name:    d.Name,
 			Folder:  d.Folder,
 			Size:    d.Size,
-			Path:    d.Path,
-			ModTime: d.ModTime,
+			Path:        d.Path,
+			ModTime:     d.ModTime,
+			Description: d.Description,
 			HasDesc: d.HasDescription,
 		})
 	}

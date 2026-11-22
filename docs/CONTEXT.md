@@ -93,6 +93,18 @@ height and left the rest of the tile empty. The tile's box now fills the card an
 as in the cards grid — a tile is a picture, not a picture with margins. Measured: tile 161 × 161, image
 161 × 161, `cover`.
 
+## The description comes from the installation (0.2.0, 22.11.2026)
+
+The gallery showed `memory/gallery/meta/<file>.description`, so a picture described again in AnyText
+("Описать заново") kept its old words here. The installation is where a description lives — the window
+writes it there, the vision job writes it there — so the card and the editor now read **the
+installation's** text (`doc.list` answers it) and fall back to the memory record only when the
+installation has none.
+
+Saving still writes both: the installation (the truth, searchable) and memory-store (the old bmat
+gallery, which is still alive). An edit made in AnyText therefore does not reach the old gallery — it is
+being retired, and that is the direction of the dependency: gallery → installation, never back.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

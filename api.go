@@ -236,8 +236,9 @@ func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
 		answer["memory"] = "ok"
 	}
 
-	// The copy in the installation: only a description is a description; tags and a prompt have no
-	// place in the index.
+	// The installation is where a description lives: "Describe with a model" writes there, the window
+	// edits it there, and the gallery shows that text. An emptied description is dropped, not saved as
+	// an empty one.
 	if strings.TrimSpace(meta.Description) != "" {
 		_, err := a.install.call(ctx, "doc.save_description", map[string]any{
 			"bucket": a.bucket, "doc": doc, "text": meta.Description, "model": "gallery",
@@ -248,7 +249,11 @@ func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
 			answer["index"] = "ok"
 		}
 	} else {
-		answer["index"] = "нет описания"
+		if _, err := a.install.call(ctx, "doc.drop_description", map[string]any{"bucket": a.bucket, "doc": doc}); err != nil {
+			answer["index"] = err.Error()
+		} else {
+			answer["index"] = "удалено"
+		}
 	}
 	writeJSON(w, http.StatusOK, answer)
 }

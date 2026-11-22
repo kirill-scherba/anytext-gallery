@@ -243,7 +243,7 @@ function redrawInfo(card, item) {
 /** cardInfoHTML is the caption under a picture: shown in the "cards" grid, hidden in the dense one. */
 function cardInfoHTML(item) {
   const when = item.mod_time ? new Date(item.mod_time).toLocaleString(locale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
-  const desc = item.meta && item.meta.description ? item.meta.description : ''
+  const desc = item.description || (item.meta && item.meta.description) || ''
   const pubUrl = item.public && item.public_url ? item.public_url : ''
   return `<div class="info">
     <div class="info-row"><span class="name">${esc(item.name)}</span>
@@ -430,7 +430,7 @@ async function openMeta(item) {
   try {
     const answer = await api('api/meta?doc=' + encodeURIComponent(item.doc))
     const meta = (answer && answer.meta) || {}
-    $('fDescription').value = meta.description || ''
+    $('fDescription').value = item.description || meta.description || ''
     $('fTags').value = meta.tags || ''
     $('fContext').value = meta.context || ''
     $('fPrompt').value = meta.prompt || ''
@@ -464,6 +464,8 @@ async function saveMeta(event) {
       body: JSON.stringify(body),
     })
     editingMeta.meta = body
+    // The picture's description in the installation is what the card shows.
+    editingMeta.description = body.description
     const card = [...document.querySelectorAll('.card')].find((c) => c.dataset.doc === editingMeta.doc)
     if (card) redrawInfo(card, editingMeta)
     // The copy in the installation is a separate result: a person must see when it did not happen.
