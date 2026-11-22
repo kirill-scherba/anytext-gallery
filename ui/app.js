@@ -30,7 +30,14 @@ const STRINGS = {
     loading: 'Загрузка…', empty: 'В этой коллекции пока нет картинок',
     nothingFound: 'Ничего не найдено', error: 'Картинки не пришли',
     picturesCount: 'картинок', of: 'из',
-    sortTitle: 'порядок', sortNew: 'новые сверху', sortName: 'по имени', articlesSoon: 'Статьи — следующий шаг',
+    sortTitle: 'порядок', sortNew: 'новые сверху', sortName: 'по имени',
+    modeTitle: 'вид сетки', modeCompact: 'плотная', modeCards: 'карточки',
+    edit: 'Изменить', metaTitle: 'Описание картинки',
+    metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
+    metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
+    metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
+    savedToMemory: 'Сохранено. Копия описания — в установке.',
+    savedPartial: 'Сохранено в галерее, но не в установке:', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
   },
   en: {
@@ -39,7 +46,14 @@ const STRINGS = {
     loading: 'Loading…', empty: 'No pictures in this collection yet',
     nothingFound: 'Nothing found', error: 'The pictures did not arrive',
     picturesCount: 'pictures', of: 'of',
-    sortTitle: 'order', sortNew: 'newest first', sortName: 'by name', articlesSoon: 'Articles are the next step',
+    sortTitle: 'order', sortNew: 'newest first', sortName: 'by name',
+    modeTitle: 'grid', modeCompact: 'dense', modeCards: 'cards',
+    edit: 'Edit', metaTitle: 'About this picture',
+    metaDescription: 'Description', metaTags: 'Tags (comma separated)',
+    metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
+    metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
+    savedToMemory: 'Saved. A copy of the description is in the installation.',
+    savedPartial: 'Saved in the gallery, but not in the installation:', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
   },
 }
@@ -95,6 +109,7 @@ const state = {
   offset: 0,
   q: '',
   sort: 'new',
+  mode: 'compact',
   loading: false,
   done: false,
   error: '',
@@ -187,16 +202,52 @@ async function loadPage(reset) {
 function renderCards(items) {
   const grid = $('cards')
   for (const item of items) {
-    const card = document.createElement('button')
-    card.type = 'button'
+    const card = document.createElement('div')
     card.className = 'card'
     card.dataset.doc = item.doc
     card.title = item.name
-    card.innerHTML = `<span class="ph">${esc(shortName(item.name))}</span>`
-    card.addEventListener('click', () => openViewer(item))
+    card.innerHTML = `<div class="thumb"><span class="ph">${esc(shortName(item.name))}</span></div>` +
+      cardInfoHTML(item)
+    const thumb = card.querySelector('.thumb')
+    thumb.addEventListener('click', () => openViewer(item))
+    bindCardInfo(card, item)
     grid.appendChild(card)
     observeCard(card, item)
   }
+}
+
+/** bindCardInfo attaches the editor of the caption, and rebinds it after the caption is redrawn. */
+function bindCardInfo(card, item) {
+  const edit = card.querySelector('[data-act="edit"]')
+  if (edit) edit.addEventListener('click', (event) => { event.stopPropagation(); openMeta(item) })
+}
+
+/** redrawInfo replaces the caption of one card after its meta changed. */
+function redrawInfo(card, item) {
+  const info = card.querySelector('.info')
+  if (!info) return
+  info.outerHTML = cardInfoHTML(item)
+  bindCardInfo(card, item)
+}
+
+/** cardInfoHTML is the caption under a picture: shown in the "cards" grid, hidden in the dense one. */
+function cardInfoHTML(item) {
+  const when = item.mod_time ? new Date(item.mod_time).toLocaleString(locale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+  const desc = item.meta && item.meta.description ? item.meta.description : ''
+  return `<div class="info">
+    <div class="info-row"><span class="name">${esc(item.name)}</span>
+      <button type="button" class="text" data-act="edit" title="${esc(t('edit'))}">${esc(t('edit'))}</button></div>
+    <div class="date">${esc(when)}</div>
+    ${desc ? `<div class="desc">${esc(desc)}</div>` : ''}
+  </div>`
+}
+
+/** applyMode switches the grid between the dense tiles and the cards with words. */
+function applyMode() {
+  const grid = $('cards')
+  if (!grid) return
+  grid.classList.toggle('mode-cards', state.mode === 'cards')
+  grid.classList.toggle('mode-compact', state.mode !== 'cards')
 }
 
 function shortName(name) {
@@ -247,8 +298,9 @@ async function loadThumb(card) {
     img.alt = card.title
     img.loading = 'lazy'
     img.addEventListener('load', () => URL.revokeObjectURL(url))
-    card.innerHTML = ''
-    card.appendChild(img)
+    const thumb = card.querySelector('.thumb') || card
+    thumb.innerHTML = ''
+    thumb.appendChild(img)
   } catch (e) {
     card.classList.add('broken')
   }
@@ -312,6 +364,91 @@ function stepViewer(delta) {
   showViewer()
 }
 
+// --- what a person writes about a picture ------------------------------------------------------
+
+let editingMeta = null
+
+async function openMeta(item) {
+  editingMeta = item
+  $('metaError').hidden = true
+  $('metaSaved').hidden = true
+  $('metaFile').textContent = item.name
+  $('fDescription').value = ''
+  $('fTags').value = ''
+  $('fContext').value = ''
+  $('fPrompt').value = ''
+  $('fMemoir').value = ''
+  $('meta').showModal()
+  $('fDescription').focus()
+  try {
+    const answer = await api('api/meta?doc=' + encodeURIComponent(item.doc))
+    const meta = (answer && answer.meta) || {}
+    $('fDescription').value = meta.description || ''
+    $('fTags').value = meta.tags || ''
+    $('fContext').value = meta.context || ''
+    $('fPrompt').value = meta.prompt || ''
+    $('fMemoir').value = meta.memoir || ''
+  } catch (e) {
+    $('metaError').textContent = e.message
+    $('metaError').hidden = false
+  }
+}
+
+async function saveMeta(event) {
+  event.preventDefault()
+  if (!editingMeta) return
+  const error = $('metaError')
+  const saved = $('metaSaved')
+  error.hidden = true
+  saved.hidden = true
+  const body = {
+    description: $('fDescription').value.trim(),
+    tags: $('fTags').value.trim(),
+    context: $('fContext').value.trim(),
+    prompt: $('fPrompt').value.trim(),
+    memoir: $('fMemoir').value.trim(),
+  }
+  const button = $('metaSave')
+  button.disabled = true
+  try {
+    const answer = await api('api/meta?doc=' + encodeURIComponent(editingMeta.doc), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    editingMeta.meta = body
+    const card = [...document.querySelectorAll('.card')].find((c) => c.dataset.doc === editingMeta.doc)
+    if (card) redrawInfo(card, editingMeta)
+    // The copy in the installation is a separate result: a person must see when it did not happen.
+    if (answer.index && answer.index !== 'ok' && answer.index !== 'нет описания') {
+      saved.textContent = `${t('savedPartial')} ${answer.index}`
+    } else {
+      saved.textContent = t('savedToMemory')
+    }
+    saved.hidden = false
+  } catch (e) {
+    error.textContent = e.message
+    error.hidden = false
+  } finally {
+    button.disabled = false
+  }
+}
+
+async function deleteMeta() {
+  if (!editingMeta) return
+  if (!window.confirm(t('metaDelete') + '?')) return
+  try {
+    await api('api/meta?doc=' + encodeURIComponent(editingMeta.doc), { method: 'DELETE' })
+    editingMeta.meta = {}
+    const card = [...document.querySelectorAll('.card')].find((c) => c.dataset.doc === editingMeta.doc)
+    if (card) redrawInfo(card, editingMeta)
+    $('meta').close()
+  } catch (e) {
+    $('metaError').textContent = e.message
+    $('metaError').hidden = false
+  }
+}
+
 // --- the bar -----------------------------------------------------------------------------------
 
 function updateCounter() {
@@ -371,6 +508,18 @@ function bind() {
   $('refresh').addEventListener('click', () => { hideNotice(); search('') })
 
   try {
+    const storedMode = localStorage.getItem('anytextGallery.mode')
+    if (storedMode === 'cards' || storedMode === 'compact') state.mode = storedMode
+  } catch (e) { /* private mode */ }
+  $('mode').value = state.mode
+  applyMode()
+  $('mode').addEventListener('change', (event) => {
+    state.mode = event.target.value === 'cards' ? 'cards' : 'compact'
+    try { localStorage.setItem('anytextGallery.mode', state.mode) } catch (e) { /* private mode */ }
+    applyMode()
+  })
+
+  try {
     const stored = localStorage.getItem('anytextGallery.sort')
     if (stored === 'name' || stored === 'new') state.sort = stored
   } catch (e) { /* private mode */ }
@@ -388,6 +537,9 @@ function bind() {
     timer = setTimeout(() => search(value), 250)
   })
 
+  $('metaForm').addEventListener('submit', saveMeta)
+  $('metaCancel').addEventListener('click', () => $('meta').close())
+  $('metaDelete').addEventListener('click', deleteMeta)
   $('viewerClose').addEventListener('click', closeViewer)
   $('viewerPrev').addEventListener('click', () => stepViewer(-1))
   $('viewerNext').addEventListener('click', () => stepViewer(1))

@@ -22,6 +22,10 @@
     </div>
 
     <div class="actions">
+      <select id="mode" class="sort" data-i18n-title="modeTitle" title="вид">
+        <option value="compact" data-i18n="modeCompact">плотная</option>
+        <option value="cards" data-i18n="modeCards">карточки</option>
+      </select>
       <select id="sort" class="sort" data-i18n-title="sortTitle" title="порядок">
         <option value="new" data-i18n="sortNew">новые сверху</option>
         <option value="name" data-i18n="sortName">по имени</option>
@@ -54,6 +58,46 @@
     </figure>
     <button type="button" class="viewer-nav next" id="viewerNext" title="→">›</button>
   </div>
+
+  <!-- What a person wrote about the picture: the old gallery's fields, in the same place in the
+       memory store. -->
+  <dialog id="meta">
+    <form id="metaForm" novalidate>
+      <h2 id="metaTitle" data-i18n="metaTitle">Описание картинки</h2>
+      <p class="muted" id="metaFile"></p>
+
+      <label class="field">
+        <span data-i18n="metaDescription">Описание</span>
+        <textarea id="fDescription" rows="5"></textarea>
+      </label>
+      <label class="field">
+        <span data-i18n="metaTags">Теги (через запятую)</span>
+        <input type="text" id="fTags" />
+      </label>
+      <label class="field">
+        <span data-i18n="metaContext">Контекст</span>
+        <input type="text" id="fContext" />
+      </label>
+      <label class="field">
+        <span data-i18n="metaPrompt">Prompt генерации</span>
+        <textarea id="fPrompt" rows="3"></textarea>
+      </label>
+      <label class="field">
+        <span data-i18n="metaMemoir">Рассказ (имя файла)</span>
+        <input type="text" id="fMemoir" />
+      </label>
+
+      <p class="error" id="metaError" hidden></p>
+      <p class="hint" id="metaSaved" hidden></p>
+
+      <div class="buttons">
+        <button type="button" class="text danger" id="metaDelete" data-i18n="metaDelete">Удалить мету</button>
+        <span class="spacer"></span>
+        <button type="button" class="text" id="metaCancel" data-i18n="cancel">Отмена</button>
+        <button type="submit" class="text primary" id="metaSave" data-i18n="save">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>{{.Script}}</script>
 </body>

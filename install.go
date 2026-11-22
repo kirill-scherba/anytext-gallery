@@ -78,8 +78,9 @@ type Picture struct {
 	// does not say when a picture appeared (22.11.2026).
 	ModTime string `json:"mod_time,omitempty"`
 	// HasDesc says the installation holds a description of this picture in its index (the standard
-	// place); the gallery's own text lives in memory-store and is shown in the next step.
-	HasDesc bool `json:"has_description"`
+	// place); Meta is what a person wrote about it in the gallery.
+	HasDesc bool  `json:"has_description"`
+	Meta    *Meta `json:"meta,omitempty"`
 }
 
 // imageExts are the files a gallery shows. Everything else in the collection (markdown, audio,

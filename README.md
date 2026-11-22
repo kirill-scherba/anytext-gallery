@@ -40,7 +40,10 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
 | previews | taken from `/api/thumb` with the account token, six at a time, when a card comes near the screen |
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes |
+| two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search | by name of the file and its folder |
+| meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description |
+| migrate | `POST /api/migrate` copies every known description into the installation once |
 | articles | the next step: long-form texts around the pictures |
 
 The screen is **one self-contained document**: styles and script inside the page. A module split into

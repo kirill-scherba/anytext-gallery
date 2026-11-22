@@ -19,7 +19,7 @@ import (
 )
 
 // version is the module's own version.
-const version = "0.1.3"
+const version = "0.1.4"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7860", "address to listen on (loopback only)")
@@ -35,7 +35,17 @@ func main() {
 		self = "http://127.0.0.1:7787"
 	}
 
-	a := &app{install: newInstallClient(self), bucket: strings.TrimSpace(*bucket)}
+	// The words about the pictures live in memory-store, reached through the installation's gateway:
+	// the module keeps no database of its own (22.11.2026).
+	proxy := strings.TrimRight(strings.TrimSpace(os.Getenv("ANYTEXT_MCP_PROXY")), "/")
+	if proxy == "" {
+		proxy = "http://127.0.0.1:7711"
+	}
+	a := &app{
+		install: newInstallClient(self),
+		memory:  newMemoryClient(proxy, "memory-store-mcp"),
+		bucket:  strings.TrimSpace(*bucket),
+	}
 	log.Printf("anytext-gallery %s: %s, installation %s, collection %q", version, *addr, self, a.bucket)
 	log.Fatal(http.ListenAndServe(*addr, a.routes()))
 }

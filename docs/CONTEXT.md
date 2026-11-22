@@ -49,6 +49,19 @@ installation older than that answers without times, and the module falls back to
 The viewer shows a spinner while the picture travels, not a torn page: a missing `src` is drawn as a
 broken image, and a broken image looks like a failure (22.11.2026).
 
+## Step 2: the words about a picture (0.1.4, 22.11.2026)
+
+- Two grids: the dense one the module started with, and cards the size and shape of the old gallery
+  (280px, preview 200px high, name, date, description, «Изменить»). The choice is remembered.
+- The editor keeps the old fields — description, tags, context, prompt, story — and keeps them where
+  the old gallery keeps them: `memory/gallery/meta/<file>`.
+- A saved description is **copied** into the installation (`doc.save_description` → `<file>/vision`),
+  which makes it searchable and marks the picture as described for the vision job. «Не переносить, а
+  копировать»: the old gallery keeps working until it is switched off.
+- The one-time migration copied 120 descriptions of 151 records (31 skipped: their pictures are not in
+  the collection root — renamed, moved to pub/ or trash), 0 failures. Search now finds pictures by
+  what is written about them.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

@@ -13,15 +13,19 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// app is the module with its single dependency.
+// app is the module with its two dependencies: the installation (files and pictures) and memory-store
+// (the words about them).
 type app struct {
 	install *installClient
+	memory  *memoryClient
 	bucket  string
 
 	// root is the folder of the collection, read once: a gallery page must not ask the installation
@@ -50,10 +54,17 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/status", a.status)
 	mux.HandleFunc("GET /api/config", a.config)
 	mux.HandleFunc("GET /api/images", a.images)
+	mux.HandleFunc("GET /api/meta", a.meta)
+	mux.HandleFunc("POST /api/meta", a.saveMeta)
+	mux.HandleFunc("DELETE /api/meta", a.deleteMeta)
+	mux.HandleFunc("POST /api/migrate", a.migrate)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
 	mux.HandleFunc("GET /ui/", a.page)
 	return mux
 }
+
+// errNoDoc is the one missing argument of the meta endpoints.
+var errNoDoc = errors.New("нужен документ (doc)")
 
 // config tells the screen which collection it works with.
 func (a *app) config(w http.ResponseWriter, r *http.Request) {
@@ -130,12 +141,27 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 	if end > total {
 		end = total
 	}
+	page := pics[offset:end]
+	// The words about the pictures: one batch call for the page, not one per card.
+	if a.memory != nil {
+		names := make([]string, 0, len(page))
+		for _, p := range page {
+			names = append(names, p.Name)
+		}
+		if metas, err := a.memory.GetMany(ctx, names); err == nil {
+			for i := range page {
+				if meta, ok := metas[page[i].Name]; ok {
+					page[i].Meta = &meta
+				}
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bucket": a.bucket,
 		"total":  total,
 		"offset": offset,
 		"limit":  limit,
-		"items":  pics[offset:end],
+		"items":  page,
 	})
 }
 
@@ -148,4 +174,147 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeError(w http.ResponseWriter, code int, err error) {
 	writeJSON(w, code, map[string]any{"error": err.Error()})
+}
+
+// meta answers what a person wrote about one picture. The installation's own description (the index)
+// says whether the copy there exists.
+func (a *app) meta(w http.ResponseWriter, r *http.Request) {
+	doc := r.URL.Query().Get("doc")
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	meta := Meta{}
+	if a.memory != nil {
+		if got, err := a.memory.Get(ctx, nameOf(doc)); err == nil {
+			meta = got
+		} else {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "meta": meta})
+}
+
+// saveMeta writes the words into memory-store and copies the description into the installation's
+// standard place: the old gallery keeps working, and the search starts finding pictures by their
+// descriptions (22.11.2026 — «не переносить, а копировать»).
+func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
+	doc := r.URL.Query().Get("doc")
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	var meta Meta
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&meta); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("тело запроса не разобрано: %w", err))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	answer := map[string]any{"doc": doc, "meta": meta}
+	if a.memory != nil {
+		if err := a.memory.Save(ctx, nameOf(doc), meta); err != nil {
+			writeError(w, http.StatusBadGateway, fmt.Errorf("память: %w", err))
+			return
+		}
+		answer["memory"] = "ok"
+	}
+
+	// The copy in the installation: only a description is a description; tags and a prompt have no
+	// place in the index.
+	if strings.TrimSpace(meta.Description) != "" {
+		_, err := a.install.call(ctx, "doc.save_description", map[string]any{
+			"bucket": a.bucket, "doc": doc, "text": meta.Description, "model": "gallery",
+		})
+		if err != nil {
+			answer["index"] = err.Error()
+		} else {
+			answer["index"] = "ok"
+		}
+	} else {
+		answer["index"] = "нет описания"
+	}
+	writeJSON(w, http.StatusOK, answer)
+}
+
+// deleteMeta removes the words about a picture from memory-store. The copy in the installation stays:
+// a description there is search, and the gallery does not own the search.
+func (a *app) deleteMeta(w http.ResponseWriter, r *http.Request) {
+	doc := r.URL.Query().Get("doc")
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	if a.memory != nil {
+		if err := a.memory.Delete(ctx, nameOf(doc)); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "deleted": true})
+}
+
+// nameOf is the file name of a document key: the meta keys are built from names, as before.
+func nameOf(doc string) string {
+	if i := strings.LastIndex(doc, "/"); i >= 0 {
+		return doc[i+1:]
+	}
+	return doc
+}
+
+// migrate copies the gallery's descriptions into the installation's standard place: the old gallery
+// keeps reading memory-store, and the search starts finding pictures by what is written about them.
+// It is idempotent — a picture whose description is already there is written again, which costs one
+// ingest and changes nothing.
+func (a *app) migrate(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel()
+	names, err := a.memory.Names(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	docs, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	byName := make(map[string]string, len(docs))
+	for _, d := range docs {
+		byName[d.Name] = d.Doc
+	}
+
+	copied, skipped, failed := 0, 0, 0
+	problems := []string{}
+	for _, name := range names {
+		doc, ok := byName[name]
+		if !ok {
+			skipped++ // a picture that is no longer in the collection
+			continue
+		}
+		meta, err := a.memory.Get(ctx, name)
+		if err != nil || strings.TrimSpace(meta.Description) == "" {
+			skipped++
+			continue
+		}
+		if _, err := a.install.call(ctx, "doc.save_description", map[string]any{
+			"bucket": a.bucket, "doc": doc, "text": meta.Description, "model": "gallery",
+		}); err != nil {
+			failed++
+			if len(problems) < 10 {
+				problems = append(problems, name+": "+err.Error())
+			}
+			continue
+		}
+		copied++
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"records": len(names), "copied": copied, "skipped": skipped, "failed": failed, "problems": problems,
+	})
 }
