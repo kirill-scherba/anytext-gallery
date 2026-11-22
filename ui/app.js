@@ -39,8 +39,8 @@ const STRINGS = {
     metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
-    savedToMemory: 'Сохранено. Копия описания — в установке.',
-    savedPartial: 'Сохранено в галерее, но не в установке:', articlesSoon: 'Статьи — следующий шаг',
+    savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
+    savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
   },
   en: {
@@ -58,8 +58,8 @@ const STRINGS = {
     metaDescription: 'Description', metaTags: 'Tags (comma separated)',
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
-    savedToMemory: 'Saved. A copy of the description is in the installation.',
-    savedPartial: 'Saved in the gallery, but not in the installation:', articlesSoon: 'Articles are the next step',
+    savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
+    savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
   },
 }
