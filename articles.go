@@ -68,9 +68,14 @@ var (
 	reLinkHref = regexp.MustCompile(`href="[^"]*?/i/(?:pub/)?([^"/]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))"`)
 	// The same picture in markdown and as a bare address: ![alt](https://bmat.uk/i/x.png) and
 	// "**Иллюстрация:** https://bmat.uk/i/x.png".
-	reMDTarget  = regexp.MustCompile(`\]\(([^)\s]*?/i/(?:pub/)?[^)\s]+?)\)`)
+	reMDTarget  = regexp.MustCompile(`\]\(([^)\s]+?)\)`)
 	reURLTarget = regexp.MustCompile(`(https?://[^\s)]+/i/(?:pub/)?[^\s)]+)`)
-	rePicName   = regexp.MustCompile(`/i/(?:pub/)?([^/\s)]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))`)
+	// A picture is named by its file: with a host ("…/i/name.png") or without one ("name.png"), which
+	// is what a chapter should carry — the address may change, the name may not (22.11.2026).
+	rePicName = regexp.MustCompile(`(?:^|/i/(?:pub/)?|[/(])([^/\s)]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))`)
+	// A picture named without a host: src="name.png" and href="name.png".
+	reBareImg  = regexp.MustCompile(`src="([^"/]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))"`)
+	reBareLink = regexp.MustCompile(`href="([^"/]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))"`)
 	// The **Key:** Value header of a chapter.
 	reHeader = regexp.MustCompile(`^\*\*([^*]+):\*\*\s*(.*?)\s*$`)
 	// A date as "12 июля 2026" or "2026-07-12".
@@ -208,6 +213,10 @@ func (r *articlesReader) render(ctx context.Context, article Article) (string, e
 	html := buf.String()
 	html = reImageSrc.ReplaceAllString(html, `src="" data-gallery="$1"`)
 	html = reLinkHref.ReplaceAllString(html, `href="#" data-gallery="$1"`)
+	// ![alt](img_123.png): goldmark turns a bare name into src="img_123.png" — the name is what the
+	// screen needs, and the address is none of its business.
+	html = reBareImg.ReplaceAllString(html, `src="" data-gallery="$1"`)
+	html = reBareLink.ReplaceAllString(html, `href="#" data-gallery="$1"`)
 	return html, nil
 }
 
