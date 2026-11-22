@@ -39,7 +39,7 @@ const STRINGS = {
     metaDescription: 'Описание', metaTags: 'Теги (через запятую)',
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
-    backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет',
+    backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор',
     articlesError: 'Статьи не пришли',
     savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
     savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
@@ -60,7 +60,7 @@ const STRINGS = {
     metaDescription: 'Description', metaTags: 'Tags (comma separated)',
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
-    backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet',
+    backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author',
     articlesError: 'The articles did not arrive',
     savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
     savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
@@ -701,8 +701,11 @@ async function loadArticles() {
       row.type = 'button'
       row.className = 'toc-row'
       const date = formatDate(article.date)
+      const meta = []
+      if (article.author) meta.push(`<span><b>${esc(t('author'))}:</b> ${esc(article.author)}</span>`)
+      if (date) meta.push(`<span><b>${esc(date)}</b></span>`)
       row.innerHTML = `<span class="toc-title">${esc(article.title)}</span>` +
-        `<span class="toc-date">${esc(date)}</span>` +
+        (meta.length ? `<span class="toc-meta">${meta.join(' · ')}</span>` : '') +
         (article.description ? `<span class="toc-desc">${esc(article.description)}</span>` : '')
       row.addEventListener('click', () => openArticle(article.name))
       toc.appendChild(row)

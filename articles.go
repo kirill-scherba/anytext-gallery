@@ -159,7 +159,9 @@ func (r *articlesReader) Story(ctx context.Context, picture string) (Article, bo
 
 // text reads one article through the installation: the document's own text, markdown as written.
 func (r *articlesReader) text(ctx context.Context, key string) (string, error) {
-	raw, err := r.install.call(ctx, "doc.text", map[string]any{"bucket": r.bucket, "doc": key})
+	// raw: the file itself, not its extracted form — markdown rendered from the extracted text loses
+	// its blank lines, its lists and its rules (22.11.2026).
+	raw, err := r.install.call(ctx, "doc.text", map[string]any{"bucket": r.bucket, "doc": key, "raw": true})
 	if err != nil {
 		return "", err
 	}
@@ -236,6 +238,16 @@ func parseArticle(name, text string) Article {
 		switch strings.TrimSpace(m[1]) {
 		case "Автор":
 			article.Author = m[2]
+		case "Записано":
+			// "**Записано:** Барон, 26 октября 2026, по рассказу Кирилла." — the author is the first
+			// word, and the rest is a note.
+			if article.Author == "" {
+				if word, _, ok := strings.Cut(m[2], ","); ok {
+					article.Author = strings.TrimSpace(word)
+				} else {
+					article.Author = strings.TrimSpace(m[2])
+				}
+			}
 		case "Дата", "Дата события":
 			article.Date = m[2]
 		case "Место":

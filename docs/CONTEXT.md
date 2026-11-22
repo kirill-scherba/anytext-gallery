@@ -120,6 +120,16 @@ being retired, and that is the direction of the dependency: gallery → installa
   non-ISO date in `new Date()` is `Invalid Date` — the module now always answers an ISO date when it
   knows one.
 
+## The articles read the file, and the list looks like bmat's (0.3.4, 22.11.2026)
+
+- Articles are read with `doc.text {raw: true}`: the extracted text loses blank lines and rules, and a
+  chapter rendered from it glues `---` to a paragraph.
+- The table of contents follows the old gallery: a bordered entry with the title, the line
+  «Автор: …» · date, and the first paragraph. The author comes from `**Автор:**` or, when the chapter
+  says `**Записано:** Барон, …`, from the first word of that line.
+- The duplication of pictures was not the renderer's: the chunker repeats two sentences between chunks,
+  and `DocText` glued them as they came. Fixed in AnyText (docs/CONTEXT.md there).
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the
