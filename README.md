@@ -41,7 +41,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | Part | What it does |
 |---|---|
 | grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
-| previews | taken from `/api/thumb` with the account token, six at a time, when a card comes near the screen |
+| previews | the installation's `/api/thumb` — its own cache, memory and disk — given to the browser as an address, so the browser's image cache and decoder do the work too. A chapter and the viewer ask for a 1400–1600 px preview, not the original; the viewer carries an «оригинал» link |
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search (pictures) | by file name, folder, description and tags — every word of the query must be found; instant, no model involved |

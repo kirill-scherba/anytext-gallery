@@ -51,6 +51,7 @@ const STRINGS = {
     describeWaiting: 'Модель смотрит на картинку…',
     describeDone: 'Описание получено — проверьте и сохраните',
     edges: 'Связи',
+    original: 'оригинал',
     edgesNone: 'связей нет',
     edgesError: 'связи не получены',
     articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
@@ -87,6 +88,7 @@ const STRINGS = {
     describeWaiting: 'The model is looking at the picture…',
     describeDone: 'The description is here — read it and save',
     edges: 'Connections',
+    original: 'original',
     edgesNone: 'no connections',
     edgesError: 'connections did not come',
     articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
@@ -124,8 +126,11 @@ const $ = (id) => document.getElementById(id)
  */
 function installBase() {
   const b = new URL(document.baseURI)
-  b.pathname = b.pathname.replace(/api\/module\/gallery\/?$/, '').replace(/\/+$/, '')
-  return b.origin + b.pathname
+  // Whatever the module is mounted as — /api/module/gallery, another name, or the root of its own
+  // port — the pictures live at the installation's /api/..., so the module's tail is cut off and the
+  // trailing slash with it: a base that ends in "/" makes every address start with "//" (23.11.2026).
+  b.pathname = b.pathname.replace(/api\/module\/[^/]+\/?$/, '').replace(/\/+$/, '')
+  return (b.origin + b.pathname).replace(/\/+$/, '')
 }
 
 class ApiError extends Error {}
@@ -160,32 +165,21 @@ const state = {
   articleQ: '',
 }
 
+// One page of the grid: a window taller than sixty cards asks for the next page at once.
 const LIMIT = 60
-// One preview at a time is a grid that fills slowly; six is a burst a small machine can carry.
-const FETCH_SLOTS = 6
-let activeFetches = 0
-const pendingFetches = []
-
-/** runFetch keeps the number of parallel preview requests bounded and ordered. */
-function runFetch(fn) {
-  return new Promise((resolve, reject) => {
-    const start = () => {
-      activeFetches++
-      fn().then(resolve, reject).finally(() => {
-        activeFetches--
-        const next = pendingFetches.shift()
-        if (next) next()
-      })
-    }
-    if (activeFetches < FETCH_SLOTS) start()
-    else pendingFetches.push(start)
-  })
-}
 
 /** thumbURL is the installation's preview of one picture. */
 function thumbURL(doc, max) {
   const q = new URLSearchParams({ bucket: state.bucket, doc, max: String(max) })
   return `${installBase()}/api/thumb?${q.toString()}`
+}
+
+/** previewURL is the installation's preview — the one it renders once and keeps in its own cache
+ *  (memory and on disk). A memoir picture is a 1.5-2.5 MB PNG and a decode of several megapixels; its
+ *  1400 px preview is 150-250 KB and comes from that cache. A vector is taken whole: it must stay
+ *  sharp (23.11.2026). */
+function previewURL(doc, max) {
+  return /\.svg$/i.test(doc) ? fileURL(doc) : thumbURL(doc, max)
 }
 
 /** fileURL is the picture itself, not compressed. */
@@ -351,23 +345,25 @@ async function loadThumb(card) {
   if (card._item) loadCardEdges(card, card._item)
   // An SVG is not a photograph: the preview endpoint renders pictures, so a vector is taken whole
   // and the browser draws it.
-  const vector = /\.svg$/i.test(doc)
-  try {
-    const res = await runFetch(() => fetch(vector ? fileURL(doc) : thumbURL(doc, 400)))
-    if (!res.ok) throw new Error(res.status)
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const img = document.createElement('img')
-    img.src = url
-    img.alt = card.title
-    img.loading = 'lazy'
-    img.addEventListener('load', () => URL.revokeObjectURL(url))
-    const thumb = card.querySelector('.thumb') || card
-    thumb.innerHTML = ''
-    thumb.appendChild(img)
-  } catch (e) {
+  const thumb = card.querySelector('.thumb') || card
+  // The browser is given the address, not a blob: its own image cache, its own decoder off the main
+  // thread, and a second look at the same card costs nothing at all (23.11.2026).
+  const img = document.createElement('img')
+  img.alt = card.title
+  img.loading = 'lazy'
+  img.decoding = 'async'
+  img.src = previewURL(doc, 400)
+  img.addEventListener('error', () => {
+    // A preview that did not come is not a broken picture: ask for the picture itself once.
+    if (!img.dataset.fallback) {
+      img.dataset.fallback = '1'
+      img.src = fileURL(doc)
+      return
+    }
     card.classList.add('broken')
-  }
+  })
+  thumb.innerHTML = ''
+  thumb.appendChild(img)
 }
 
 // --- the viewer --------------------------------------------------------------------------------
@@ -487,18 +483,23 @@ async function showViewer() {
   img.removeAttribute('src')
   img.alt = item.name
   spinner.hidden = false
-  try {
-    const res = await runFetch(() => fetch(fileURL(item.doc)))
-    if (!res.ok) throw new Error(res.status)
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    img.onload = () => { spinner.hidden = true; img.hidden = false }
-    img.src = url
-  } catch (e) {
+  delete img.dataset.fallback
+  img.onload = () => { spinner.hidden = true; img.hidden = false }
+  img.onerror = () => {
+    // A preview that did not come — ask for the picture itself before calling it broken.
+    if (!img.dataset.fallback) {
+      img.dataset.fallback = '1'
+      img.src = fileURL(item.doc)
+      return
+    }
     spinner.hidden = true
     img.hidden = false
     img.alt = `${item.name} — ${t('error')}`
   }
+  img.src = previewURL(item.doc, 1600)
+  const original = $('viewerOriginal')
+  original.href = fileURL(item.doc)
+  original.hidden = false
   showEdges(item.name)
   $('viewerPrev').disabled = viewerIndex <= 0
   $('viewerNext').disabled = viewerIndex >= state.items.length - 1 && state.done
@@ -1046,10 +1047,16 @@ async function openArticle(name) {
         viewerIndex = 0
         showViewer()
       })
-      try {
-        const res = await runFetch(() => fetch(fileURL(doc)))
-        if (res.ok) img.src = URL.createObjectURL(await res.blob())
-      } catch (e) { /* a picture that did not come is a picture without a box */ }
+      // A chapter shows previews, not originals: two pictures used to pull three megabytes of PNG and
+      // decode both at full size (23.11.2026).
+      img.loading = 'lazy'
+      img.src = previewURL(doc, 1400)
+      img.addEventListener('error', () => {
+        if (!img.dataset.fallback) {
+          img.dataset.fallback = '1'
+          img.src = fileURL(doc)
+        }
+      })
     }
     for (const link of $('storyBody').querySelectorAll('a[data-gallery]')) {
       const doc = docs[link.dataset.gallery]

@@ -400,3 +400,8 @@ html.dark .hint { color: #4fd18b; }
 
 /* The line a search found the chapter in: dim, one paragraph, no more than two lines. */
 .toc-snippet { font-size: 14px; color: var(--muted); line-height: 1.6; font-style: italic; }
+
+/* The link to the original file: a preview is what a person looks at, the original is what he may
+   want to open or download (23.11.2026). */
+.viewer figcaption .original { margin-left: 10px; font-size: 12px; color: var(--muted); }
+.viewer figcaption .original:hover { color: var(--accent); }
