@@ -168,6 +168,172 @@ const state = {
 // One page of the grid: a window taller than sixty cards asks for the next page at once.
 const LIMIT = 60
 
+// --- the picture cache of the installation's own window -------------------------------------------
+//
+// The window keeps a copy of every picture it has shown in IndexedDB «anytext-pictures», keyed by
+// collection, document and size (anytext-gui/frontend/src/pictures.js). The module is served from the
+// same origin, so it reads and fills that same cache: a picture the window has already seen opens in
+// the gallery at once, and what the gallery keeps is there for the window. The rules are the window's
+// own — 200 MB, seven days, oldest first — because two caches with two policies would fight
+// (23.11.2026).
+const PIC_DB = 'anytext-pictures'
+const PIC_STORE = 'pictures'
+const PIC_META = 'meta'
+const PIC_LIMIT = 200 * 1024 * 1024
+const PIC_MAX_AGE = 7 * 24 * 60 * 60 * 1000
+
+let picDBPromise = null
+const picURLs = new Map() // key -> blob address of this page
+
+/** picKey names one picture the way the window does: the permit is not part of it, the size is. */
+function picKey(bucket, doc, max) {
+  return `${bucket || ''}/${doc || ''}@${max || 0}`
+}
+
+/** picOpen opens the window's database without asking for a version: whatever version the window
+ *  keeps, the module takes it as it is. A missing store is not an error — it is a cache turned off. */
+function picOpen() {
+  if (picDBPromise) return picDBPromise
+  picDBPromise = new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') {
+      resolve(null)
+      return
+    }
+    const usable = (db) => (db.objectStoreNames.contains(PIC_STORE) && db.objectStoreNames.contains(PIC_META) ? db : null)
+    let req
+    try {
+      // The window's own version and its own two stores: the module may find the database or create it,
+      // and both sides must see the same shape. A database the window has already moved past is taken as
+      // it is — the stores are checked, not the number.
+      req = indexedDB.open(PIC_DB, 2)
+    } catch (e) {
+      resolve(null)
+      return
+    }
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(PIC_STORE)) {
+        const os = db.createObjectStore(PIC_STORE, { keyPath: 'key' })
+        os.createIndex('storedAt', 'storedAt')
+      }
+      if (!db.objectStoreNames.contains(PIC_META)) {
+        db.createObjectStore(PIC_META, { keyPath: 'key' })
+      }
+    }
+    req.onsuccess = () => resolve(usable(req.result))
+    req.onerror = () => {
+      // A version the window has raised above ours: open whatever it keeps, and use it if the stores are
+      // there. Opening without a version never creates anything.
+      const fallback = indexedDB.open(PIC_DB)
+      fallback.onsuccess = () => resolve(usable(fallback.result))
+      fallback.onerror = () => resolve(null)
+    }
+  })
+  return picDBPromise
+}
+
+function picRow(db, key) {
+  return new Promise((resolve) => {
+    try {
+      const req = db.transaction(PIC_STORE, 'readonly').objectStore(PIC_STORE).get(key)
+      req.onsuccess = () => resolve(req.result || null)
+      req.onerror = () => resolve(null)
+    } catch (e) {
+      resolve(null)
+    }
+  })
+}
+
+function picStore(db, key, blob) {
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction([PIC_STORE, PIC_META], 'readwrite')
+      tx.objectStore(PIC_META).put({ key, storedAt: Date.now(), bytes: blob.size })
+      const req = tx.objectStore(PIC_STORE).put({ key, blob, storedAt: Date.now(), bytes: blob.size })
+      req.onsuccess = () => resolve(true)
+      req.onerror = () => resolve(false)
+    } catch (e) {
+      resolve(false)
+    }
+  })
+}
+
+/** picTrim drops the copies the window would drop: too old, or over the limit, oldest first. */
+async function picTrim(db) {
+  try {
+    const rows = await new Promise((resolve) => {
+      const req = db.transaction(PIC_META, 'readonly').objectStore(PIC_META).getAll()
+      req.onsuccess = () => resolve(req.result || [])
+      req.onerror = () => resolve([])
+    })
+    rows.sort((a, b) => (a.storedAt || 0) - (b.storedAt || 0))
+    let total = rows.reduce((sum, r) => sum + (r.bytes || 0), 0)
+    const now = Date.now()
+    for (const row of rows) {
+      const tooOld = now - (row.storedAt || 0) > PIC_MAX_AGE
+      if (!tooOld && total <= PIC_LIMIT) break
+      const tx = db.transaction([PIC_STORE, PIC_META], 'readwrite')
+      tx.objectStore(PIC_STORE).delete(row.key)
+      tx.objectStore(PIC_META).delete(row.key)
+      total -= row.bytes || 0
+      const url = picURLs.get(row.key)
+      if (url) {
+        URL.revokeObjectURL(url)
+        picURLs.delete(row.key)
+      }
+    }
+  } catch (e) {
+    // A cache that cannot be trimmed is still a cache; the window trims it on its own writes.
+  }
+}
+
+/** picFetch goes to the network once for a picture. Through a relay the address is another origin and
+ *  the <img> has already loaded it as an opaque response, so the copy has to be asked past the cache;
+ *  on this machine the address is the same origin and the browser's own copy is readable. */
+async function picFetch(address) {
+  try {
+    const url = new URL(address, location.href)
+    const res = await fetch(address, { cache: url.origin === location.origin ? 'default' : 'reload' })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    if (!blob.size || (blob.type && !blob.type.startsWith('image/'))) return null
+    return blob
+  } catch (e) {
+    return null
+  }
+}
+
+/** paintPicture puts a picture on the screen: the kept copy first, the address when there is none, and
+ *  a copy taken for the next visit. The order matters — asking the address first would download every
+ *  picture the cache already holds (23.11.2026). */
+async function paintPicture(img, bucket, doc, max, address) {
+  const key = picKey(bucket, doc, max)
+  const kept = picURLs.get(key)
+  if (kept) {
+    img.src = kept
+    return
+  }
+  const db = await picOpen()
+  if (db) {
+    const row = await picRow(db, key)
+    if (row && row.blob instanceof Blob && Date.now() - (row.storedAt || 0) < PIC_MAX_AGE) {
+      const url = URL.createObjectURL(row.blob)
+      picURLs.set(key, url)
+      img.src = url
+      return
+    }
+  }
+  img.src = address
+  if (!db) return
+  const blob = await picFetch(address)
+  if (!blob) return
+  if (!(await picStore(db, key, blob))) return
+  const url = URL.createObjectURL(blob)
+  picURLs.set(key, url)
+  if (img.isConnected) img.src = url
+  void picTrim(db)
+}
+
 /** thumbURL is the installation's preview of one picture. */
 function thumbURL(doc, max) {
   const q = new URLSearchParams({ bucket: state.bucket, doc, max: String(max) })
@@ -352,7 +518,6 @@ async function loadThumb(card) {
   img.alt = card.title
   img.loading = 'lazy'
   img.decoding = 'async'
-  img.src = previewURL(doc, 400)
   img.addEventListener('error', () => {
     // A preview that did not come is not a broken picture: ask for the picture itself once.
     if (!img.dataset.fallback) {
@@ -364,6 +529,7 @@ async function loadThumb(card) {
   })
   thumb.innerHTML = ''
   thumb.appendChild(img)
+  paintPicture(img, state.bucket, doc, 400, previewURL(doc, 400))
 }
 
 // --- the viewer --------------------------------------------------------------------------------
@@ -496,7 +662,7 @@ async function showViewer() {
     img.hidden = false
     img.alt = `${item.name} — ${t('error')}`
   }
-  img.src = previewURL(item.doc, 1600)
+  paintPicture(img, state.bucket, item.doc, 1400, previewURL(item.doc, 1400))
   const original = $('viewerOriginal')
   original.href = fileURL(item.doc)
   original.hidden = false
@@ -1050,7 +1216,7 @@ async function openArticle(name) {
       // A chapter shows previews, not originals: two pictures used to pull three megabytes of PNG and
       // decode both at full size (23.11.2026).
       img.loading = 'lazy'
-      img.src = previewURL(doc, 1400)
+      paintPicture(img, state.bucket, doc, 1400, previewURL(doc, 1400))
       img.addEventListener('error', () => {
         if (!img.dataset.fallback) {
           img.dataset.fallback = '1'
