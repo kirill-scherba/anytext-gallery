@@ -305,8 +305,13 @@ func (m *memoryClient) Edges(ctx context.Context, name string) ([]Edge, error) {
 	if err := json.Unmarshal(raw, &edges); err == nil {
 		return edges, nil
 	}
-	// The tool answers with a sentence and the array under it: "Edges for "x.png": 2\n[...]".
 	text := string(raw)
+	// "No edges found for "x.png"" is an answer, not a failure: a picture nobody has linked yet has no
+	// relations, and that is an empty list (23.11.2026 — the console filled with 502 for this).
+	if strings.Contains(strings.ToLower(text), "no edges") {
+		return []Edge{}, nil
+	}
+	// The tool answers with a sentence and the array under it: "Edges for "x.png": 2\n[...]".
 	if i := strings.IndexByte(text, '\n'); i >= 0 {
 		if err := json.Unmarshal([]byte(strings.TrimSpace(text[i+1:])), &edges); err == nil {
 			return edges, nil

@@ -611,7 +611,12 @@ func (a *app) pictureEdges(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	list, err := a.Edges(ctx, name)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		// The endpoint draws a picture's connections on the screen. A memory that did not answer is a
+		// missing list, not a broken gateway: answering 502 filled the browser console with red for
+		// every unlinked picture, and «No edges found» is not an error at all (23.11.2026).
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name": name, "edges": []Edge{}, "unavailable": true, "note": err.Error(),
+		})
 		return
 	}
 	if list == nil {

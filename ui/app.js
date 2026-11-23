@@ -586,11 +586,12 @@ function pumpEdges() {
 
 /** getEdges answers the relations of one picture, from the cache or from the module. */
 async function getEdges(name) {
+  // The whole answer is kept, not only the list: an empty list and a memory that did not answer are two
+  // different things, and only the second one is worth a word (23.11.2026).
   if (edgeCache.has(name)) return edgeCache.get(name)
   const answer = await edgeJob(() => api('api/edges?name=' + encodeURIComponent(name)))
-  const edges = answer.edges || []
-  edgeCache.set(name, edges)
-  return edges
+  edgeCache.set(name, answer)
+  return answer
 }
 
 /** loadCardEdges puts the old gallery's «Связи» mark on a card: a picture the graph knows something
@@ -598,7 +599,8 @@ async function getEdges(name) {
 async function loadCardEdges(card, item) {
   if (!item || item.edges !== undefined) return
   try {
-    const edges = await getEdges(item.name)
+    const answer = await getEdges(item.name)
+    const edges = (answer && answer.edges) || []
     item.edges = edges.length
     if (edges.length > 0 && card.isConnected) redrawInfo(card, item)
   } catch (e) {
@@ -607,22 +609,28 @@ async function loadCardEdges(card, item) {
   }
 }
 
-/** showEdges asks the module for the relations of the picture on screen and draws them under it. */
+/** showEdges draws the relations of the picture on screen. No relations is the normal case for a
+ *  picture nobody has linked yet: the block does not appear at all, and nothing is red anywhere. Only a
+ *  memory that did not answer says so, quietly (23.11.2026). */
 async function showEdges(name) {
   const box = $('viewerEdges')
   box.hidden = true
   box.innerHTML = ''
   const draw = (edges) => {
-    if (!edges || edges.length === 0) return
+    if (!edges || edges.length === 0) return false
     box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div>` +
       edges.map((e) => `<div class="edge">${edgeLine(e, name)}</div>`).join('')
     box.hidden = false
+    return true
   }
   try {
-    draw(await getEdges(name))
+    const answer = await getEdges(name)
+    if (draw((answer && answer.edges) || [])) return
+    if (answer && answer.unavailable) {
+      box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div><div class="muted">${esc(t('edgesError'))}</div>`
+      box.hidden = false
+    }
   } catch (e) {
-    // A graph that did not answer is not a picture without relations: say so, quietly, and let the
-    // picture stay the thing on screen.
     box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div><div class="muted">${esc(t('edgesError'))}</div>`
     box.hidden = false
   }

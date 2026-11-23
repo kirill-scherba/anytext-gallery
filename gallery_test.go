@@ -363,13 +363,28 @@ func TestEdgesEndpoint(t *testing.T) {
 		t.Errorf("without a name: answered %d, want %d", res.StatusCode, http.StatusBadRequest)
 	}
 
+	// A memory that is not configured is a missing list, not a broken gateway: 502 for a picture nobody
+	// has linked filled the console with red (23.11.2026).
 	res, err = http.Get(srv.URL + "/api/edges?name=x.png")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusBadGateway {
-		t.Errorf("without a memory: answered %d, want %d", res.StatusCode, http.StatusBadGateway)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("without a memory: answered %d, want %d", res.StatusCode, http.StatusOK)
+	}
+	var answer struct {
+		Edges       []Edge `json:"edges"`
+		Unavailable bool   `json:"unavailable"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&answer); err != nil {
+		t.Fatalf("answer is not JSON: %v", err)
+	}
+	if !answer.Unavailable {
+		t.Error("the answer does not say the memory was not asked")
+	}
+	if len(answer.Edges) != 0 {
+		t.Errorf("edges = %v, want none", answer.Edges)
 	}
 }
 
