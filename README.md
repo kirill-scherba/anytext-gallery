@@ -44,7 +44,9 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | previews | taken from `/api/thumb` with the account token, six at a time, when a card comes near the screen |
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
-| search | by name of the file and its folder |
+| search (pictures) | by file name, folder, description and tags — every word of the query must be found; instant, no model involved |
+| search (chapters) | the title, the author, the date and the whole text of the chapter; the result carries the line the query was found in, without markdown |
+| search by meaning | Enter, or an empty result, asks the installation's own meaning search (`rag.search`): pictures by what is drawn on them, chapters by what they are about. The counter says «по смыслу», the cut is relative to the best hit (24 at most) |
 | graph mark | a card the memory graph knows something about carries «🔗 N» — the old gallery's «Связи» button; the relations themselves are under the picture in the viewer |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
@@ -69,7 +71,8 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 | `GET`/`POST`/`DELETE /api/public` | the public copy of a picture (`https://bmat.uk/i/pub/<file>`) |
 | `POST /api/trash` | a picture goes to the trash of the installation, the file stays |
 | `POST /api/migrate` | every known description is copied into the installation once |
-| `GET /api/articles` | the chapters of the `-articles` collection: title, author, date, first line, pictures |
+| `GET /api/articles?q=` | the chapters of the `-articles` collection: title, author, date, first line, pictures; `q` searches the title, the author, the date and the text and adds `snippet` |
+| `GET /api/search?in=pictures\|articles&q=` | the installation's meaning search, turned into card items (pictures) or chapter rows (articles) |
 | `GET /api/article?name=` | one chapter: `{title, html, source, docs}` — `source` is the markdown the editor shows |
 | `POST /api/article` `{name, text}` | the chapter is written back with `doc.save_raw`; needs the write right, refused for a picture or an empty text |
 

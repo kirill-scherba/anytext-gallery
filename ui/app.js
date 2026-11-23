@@ -26,7 +26,13 @@ let lang = storedLang()
 const STRINGS = {
   ru: {
     gallery: 'Галерея', pictures: 'Картинки', articles: 'Статьи',
-    searchPlaceholder: 'поиск по имени', refresh: 'Обновить',
+    searchPlaceholder: 'поиск: имя, описание, теги',
+    searchPlaceholderArticles: 'поиск по главам',
+    searchingMeaning: 'Ищу по смыслу…',
+    byMeaning: 'по смыслу',
+    meaningEmpty: 'По смыслу ничего не нашлось',
+    found: 'найдено',
+    refresh: 'Обновить',
     loading: 'Загрузка…', empty: 'В этой коллекции пока нет картинок',
     nothingFound: 'Ничего не найдено', error: 'Картинки не пришли',
     picturesCount: 'картинок', of: 'из',
@@ -56,7 +62,13 @@ const STRINGS = {
   },
   en: {
     gallery: 'Gallery', pictures: 'Pictures', articles: 'Articles',
-    searchPlaceholder: 'search by name', refresh: 'Refresh',
+    searchPlaceholder: 'search: name, description, tags',
+    searchPlaceholderArticles: 'search the chapters',
+    searchingMeaning: 'Searching by meaning…',
+    byMeaning: 'by meaning',
+    meaningEmpty: 'Nothing found by meaning',
+    found: 'found',
+    refresh: 'Refresh',
     loading: 'Loading…', empty: 'No pictures in this collection yet',
     nothingFound: 'Nothing found', error: 'The pictures did not arrive',
     picturesCount: 'pictures', of: 'of',
@@ -142,6 +154,10 @@ const state = {
   loading: false,
   done: false,
   error: '',
+  // semantic is how many results came from the meaning search: the grid then says so and stops
+  // asking for more pages (23.11.2026).
+  semantic: 0,
+  articleQ: '',
 }
 
 const LIMIT = 60
@@ -694,6 +710,18 @@ async function saveArticleEditor(event) {
 // --- the bar -----------------------------------------------------------------------------------
 
 function updateCounter() {
+  if (state.tab === 'articles') {
+    if (state.semantic) {
+      $('counter').textContent = `${state.semantic} · ${t('byMeaning')}`
+      return
+    }
+    $('counter').textContent = state.articleQ ? `${state.articleCount || 0} ${t('found')}` : ''
+    return
+  }
+  if (state.semantic) {
+    $('counter').textContent = `${state.semantic} · ${t('byMeaning')}`
+    return
+  }
   const total = state.total
   if (!total) {
     $('counter').textContent = ''
@@ -730,6 +758,7 @@ function showEmptyIfNeeded() {
 
 /** maybeMore asks for the next page when the end of the grid is near. */
 function maybeMore() {
+  if (state.semantic) return
   const s = $('scroller')
   if (!s || state.loading || state.done) return
   if (s.scrollTop + s.clientHeight >= s.scrollHeight - 600) loadPage(false)
@@ -776,7 +805,14 @@ function bind() {
   $('search').addEventListener('input', (event) => {
     clearTimeout(timer)
     const value = event.target.value
-    timer = setTimeout(() => search(value), 250)
+    timer = setTimeout(() => runSearch(value), 250)
+  })
+  // Enter asks the meaning search: the words in a description are one thing, «верблюд на балконе» is
+  // another (23.11.2026).
+  $('search').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    searchByMeaning()
   })
 
   $('metaForm').addEventListener('submit', saveMeta)
@@ -822,14 +858,70 @@ function bind() {
   window.addEventListener('resize', maybeMore)
 }
 
-function search(value) {
+/** searchByMeaning asks the installation's meaning search for the tab on screen: pictures by what is
+ *  drawn on them, chapters by what they are about. It costs about a second and a half — that is why it
+ *  is asked on Enter, or when the words found nothing (23.11.2026). */
+async function searchByMeaning() {
+  const q = ($('search').value || '').trim()
+  if (!q) return
+  if (state.tab === 'articles') {
+    const toc = $('toc')
+    toc.innerHTML = `<div class="empty">${esc(t('searchingMeaning'))}</div>`
+    try {
+      const answer = await api('api/search?in=articles&q=' + encodeURIComponent(q))
+      const list = answer.articles || []
+      state.semantic = list.length
+      state.articleCount = list.length
+      toc.innerHTML = list.length
+        ? `<h1>${esc(t('contents'))} · ${esc(t('byMeaning'))}</h1>`
+        : `<div class="empty">${esc(t('meaningEmpty'))}</div>`
+      for (const article of list) toc.appendChild(articleRow(article))
+      updateCounter()
+    } catch (e) {
+      toc.innerHTML = `<div class="empty">${esc(t('articlesError'))}: ${esc(e.message)}</div>`
+    }
+    return
+  }
+  const grid = $('cards')
+  grid.innerHTML = `<div class="empty">${esc(t('searchingMeaning'))}</div>`
+  try {
+    const answer = await api('api/search?in=pictures&q=' + encodeURIComponent(q))
+    const items = answer.items || []
+    state.items = items
+    state.total = items.length
+    state.semantic = items.length
+    state.done = true
+    grid.innerHTML = ''
+    if (items.length === 0) {
+      grid.innerHTML = `<div class="empty">${esc(t('meaningEmpty'))}</div>`
+    } else {
+      renderCards(items)
+    }
+    updateCounter()
+  } catch (e) {
+    grid.innerHTML = `<div class="empty">${esc(t('error'))}: ${esc(e.message)}</div>`
+  }
+}
+
+/** runSearch is the local search of the tab on screen: the grid for pictures, the contents for the
+ *  chapters. It is instant — no model, no installation call. */
+function runSearch(value) {
   const q = (value || '').trim()
+  state.semantic = 0
+  if (state.tab === 'articles') {
+    state.articleQ = q
+    loadArticles(q)
+    return
+  }
   if (q === state.q) {
     if (!q) loadPage(true)
     return
   }
   state.q = q
-  loadPage(true)
+  loadPage(true).then(() => {
+    // Nothing by the words — try the meaning: the person typed what the picture is, not its name.
+    if (q && state.items.length === 0) searchByMeaning()
+  })
 }
 
 async function start() {
@@ -869,41 +961,59 @@ function showTab(tab) {
   $('toc').hidden = state.tab !== 'articles'
   $('story').hidden = true
   $('empty').hidden = true
-  $('search').hidden = state.tab === 'articles'
+  // The counter and the "by meaning" note belong to the tab: a new tab starts from its own search.
+  state.semantic = 0
+  updateCounter()
+  $('search').placeholder = t(state.tab === 'articles' ? 'searchPlaceholderArticles' : 'searchPlaceholder')
+  $('search').hidden = false
   $('sort').hidden = state.tab === 'articles'
   $('mode').hidden = state.tab === 'articles'
   if (state.tab === 'articles') loadArticles()
 }
 
-/** loadArticles draws the table of contents: newest chapter first. */
-async function loadArticles() {
+/** loadArticles draws the table of contents: newest chapter first, or what the query found in them. */
+async function loadArticles(query) {
+  const q = query === undefined ? state.articleQ : (query || '').trim()
+  state.articleQ = q
   const toc = $('toc')
-  toc.innerHTML = `<div class="empty">${esc(t('loading'))}</div>`
+  toc.innerHTML = `<div class="empty">${esc(q ? t('searchingMeaning') : t('loading'))}</div>`
   try {
-    const answer = await api('api/articles')
+    const answer = await api('api/articles' + (q ? '?q=' + encodeURIComponent(q) : ''))
     const list = answer.articles || []
+    state.articleCount = list.length
     if (!list.length) {
-      toc.innerHTML = `<div class="empty">${esc(t('articlesEmpty'))}</div>`
+      toc.innerHTML = `<div class="empty">${esc(q ? t('meaningEmpty') : t('articlesEmpty'))}</div>`
+      updateCounter()
       return
     }
-    toc.innerHTML = `<h1>${esc(t('contents'))}</h1>`
+    toc.innerHTML = `<h1>${esc(q ? t('found') : t('contents'))}</h1>`
     for (const article of list) {
-      const row = document.createElement('button')
-      row.type = 'button'
-      row.className = 'toc-row'
-      const date = formatDate(article.date)
-      const meta = []
-      if (article.author) meta.push(`<span><b>${esc(t('author'))}:</b> ${esc(article.author)}</span>`)
-      if (date) meta.push(`<span><b>${esc(date)}</b></span>`)
-      row.innerHTML = `<span class="toc-title">${esc(article.title)}</span>` +
-        (meta.length ? `<span class="toc-meta">${meta.join(' · ')}</span>` : '') +
-        (article.description ? `<span class="toc-desc">${esc(article.description)}</span>` : '')
-      row.addEventListener('click', () => openArticle(article.name))
-      toc.appendChild(row)
+      toc.appendChild(articleRow(article))
     }
+    updateCounter()
+    // Nothing by the words — ask the meaning search, the same way the grid does.
+    if (q && list.length === 0) searchByMeaning()
   } catch (e) {
     toc.innerHTML = `<div class="empty">${esc(t('articlesError'))}: ${esc(e.message)}</div>`
   }
+}
+
+/** articleRow is one chapter in the contents: the title, «Автор · дата», the first line or the line a
+ *  search found it in. */
+function articleRow(article) {
+  const row = document.createElement('button')
+  row.type = 'button'
+  row.className = 'toc-row'
+  const date = formatDate(article.date)
+  const meta = []
+  if (article.author) meta.push(`<span><b>${esc(t('author'))}:</b> ${esc(article.author)}</span>`)
+  if (date) meta.push(`<span><b>${esc(date)}</b></span>`)
+  row.innerHTML = `<span class="toc-title">${esc(article.title)}</span>` +
+    (meta.length ? `<span class="toc-meta">${meta.join(' · ')}</span>` : '') +
+    (article.snippet ? `<span class="toc-snippet">${esc(article.snippet)}</span>`
+      : (article.description ? `<span class="toc-desc">${esc(article.description)}</span>` : ''))
+  row.addEventListener('click', () => openArticle(article.name))
+  return row
 }
 
 /** openArticle shows one chapter; its pictures are loaded through the same viewer as the grid. */

@@ -72,6 +72,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/public", a.removePublic)
 	mux.HandleFunc("POST /api/trash", a.trash)
 	mux.HandleFunc("GET /api/articles", a.articlesList)
+	mux.HandleFunc("GET /api/search", a.semanticSearch)
 	mux.HandleFunc("GET /api/article", a.article)
 	mux.HandleFunc("POST /api/article", a.saveArticle)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
@@ -138,16 +139,20 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	sortPictures(pics, mode)
+	// The words about the pictures are loaded before the filter: a search looks into the description
+	// and the tags as well as into the file name, and without them a described picture is found only
+	// by the name a person cannot remember (23.11.2026).
+	a.decorate(ctx, pics)
 	if filter != "" {
 		kept := pics[:0]
 		for _, p := range pics {
-			if strings.Contains(strings.ToLower(p.Name+" "+p.Folder), filter) {
+			if pictureMatches(p, filter) {
 				kept = append(kept, p)
 			}
 		}
 		pics = kept
 	}
+	sortPictures(pics, mode)
 
 	total := len(pics)
 	if offset > total {
@@ -158,47 +163,6 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	page := pics[offset:end]
-	for i := range page {
-		page[i].Public = IsPublic(page[i])
-		if page[i].Public {
-			page[i].PublicURL = a.publicURL(page[i])
-		}
-		// Which chapter of the memoirs this picture is in: computed from the articles themselves, so
-		// nobody has to fill a field by hand (22.11.2026).
-		if a.articles != nil {
-			if story, ok := a.articles.Story(ctx, page[i].Name); ok {
-				page[i].Story = story.Title
-				page[i].StoryName = story.Name
-			}
-		}
-	}
-	// The words about the pictures: one batch call for the page, not one per card.
-	if a.memory != nil {
-		names := make([]string, 0, len(page))
-		for _, p := range page {
-			names = append(names, p.Name)
-		}
-		if metas, err := a.memory.GetMany(ctx, names); err == nil {
-			for i := range page {
-				if meta, ok := metas[page[i].Name]; ok {
-					page[i].Meta = &meta
-				}
-			}
-		}
-	}
-	// The old gallery's own link: a picture whose meta names a chapter is shown with «Рассказ» even
-	// when the chapter never spells the file name out. A chapter that no longer exists is not a link —
-	// a button that leads nowhere is worse than no button (23.11.2026).
-	if a.articles != nil {
-		for i := range page {
-			if page[i].StoryName != "" || page[i].Meta == nil || strings.TrimSpace(page[i].Meta.Memoir) == "" {
-				continue
-			}
-			if article, ok := a.articles.ByName(ctx, strings.TrimSpace(page[i].Meta.Memoir)); ok {
-				page[i].Story, page[i].StoryName = article.Title, article.Name
-			}
-		}
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bucket": a.bucket,
 		"total":  total,
@@ -464,6 +428,20 @@ func (a *app) articlesList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	// A search over the chapters themselves: the title, the author, the date and the text. The module
+	// already holds every chapter, so this costs nothing and returns a line to read before opening it
+	// (23.11.2026).
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		found := make([]Article, 0, len(list))
+		for _, article := range list {
+			if ok, snippet := matchArticle(article, query); ok {
+				article.Snippet = snippet
+				found = append(found, article)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articles.bucket, "articles": found, "query": query})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articles.bucket, "articles": list})
 }
 
@@ -640,4 +618,182 @@ func (a *app) pictureEdges(w http.ResponseWriter, r *http.Request) {
 		list = []Edge{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"name": name, "edges": list})
+}
+
+// decorate fills what every card needs: the public copy, the chapter the picture belongs to, the
+// words a person wrote about it. One batch call for the memory, then a loop — the grid asks for this
+// on every page and after every search (23.11.2026).
+func (a *app) decorate(ctx context.Context, pics []Picture) {
+	if a.memory != nil {
+		names := make([]string, 0, len(pics))
+		for _, p := range pics {
+			names = append(names, p.Name)
+		}
+		if metas, err := a.memory.GetMany(ctx, names); err == nil {
+			for i := range pics {
+				if meta, ok := metas[pics[i].Name]; ok {
+					pics[i].Meta = &meta
+				}
+			}
+		}
+	}
+	for i := range pics {
+		pics[i].Public = IsPublic(pics[i])
+		if pics[i].Public {
+			pics[i].PublicURL = a.publicURL(pics[i])
+		}
+		// Which chapter of the memoirs this picture is in: computed from the articles themselves, so
+		// nobody has to fill a field by hand (22.11.2026).
+		if a.articles != nil {
+			if story, ok := a.articles.Story(ctx, pics[i].Name); ok {
+				pics[i].Story, pics[i].StoryName = story.Title, story.Name
+			}
+		}
+	}
+	// The old gallery's own link: a picture whose meta names a chapter is shown with «Рассказ» even
+	// when the chapter never spells the file name out. A chapter that no longer exists is not a link —
+	// a button that leads nowhere is worse than no button (23.11.2026).
+	if a.articles != nil {
+		for i := range pics {
+			if pics[i].StoryName != "" || pics[i].Meta == nil || strings.TrimSpace(pics[i].Meta.Memoir) == "" {
+				continue
+			}
+			if article, ok := a.articles.ByName(ctx, strings.TrimSpace(pics[i].Meta.Memoir)); ok {
+				pics[i].Story, pics[i].StoryName = article.Title, article.Name
+			}
+		}
+	}
+}
+
+// pictureMatches is the local search of the grid: the file name, its folder, the description the
+// installation holds and the gallery's own tags. Case-insensitive, and every word of the query has
+// to be found — "верблюд балкон" finds a description that names both (23.11.2026).
+func pictureMatches(p Picture, filter string) bool {
+	haystack := strings.ToLower(p.Name + " " + p.Folder + " " + p.Description)
+	if p.Meta != nil {
+		haystack += " " + strings.ToLower(p.Meta.Description+" "+p.Meta.Tags+" "+p.Meta.Context)
+	}
+	for _, word := range strings.Fields(filter) {
+		if !strings.Contains(haystack, word) {
+			return false
+		}
+	}
+	return true
+}
+
+// semanticSearch asks the installation's meaning search, which is what finds a picture by what is on
+// it rather than by the words in its name. The answer is turned back into the shapes the screen already
+// draws: card items for the pictures, chapter rows for the articles (23.11.2026).
+func (a *app) semanticSearch(w http.ResponseWriter, r *http.Request) {
+	in := r.URL.Query().Get("in")
+	if in != "articles" {
+		in = "pictures"
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, errors.New("пустой запрос"))
+		return
+	}
+	bucket := a.bucket
+	if in == "articles" {
+		if a.articles == nil {
+			writeError(w, http.StatusNotFound, errNoArticles)
+			return
+		}
+		bucket = a.articles.bucket
+	}
+	// The meaning search embeds the query and walks the vectors: a second and a half on this machine.
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	raw, err := a.install.call(ctx, "rag.search", map[string]any{"bucket": bucket, "query": query, "top_k": 60})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	var answer struct {
+		Results []searchHit `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("ответ поиска не разобран: %w", err))
+		return
+	}
+	answer.Results = trimHits(answer.Results)
+	if in == "articles" {
+		list, err := a.articles.List(ctx)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		byName := make(map[string]Article, len(list))
+		for _, article := range list {
+			byName[article.Name] = article
+		}
+		found := make([]Article, 0, len(answer.Results))
+		for _, hit := range answer.Results {
+			article, ok := byName[hit.Name]
+			if !ok {
+				continue
+			}
+			article.Snippet = plainSnippet(hit.Snippet)
+			found = append(found, article)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"in": in, "query": query, "articles": found})
+		return
+	}
+
+	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	a.decorate(ctx, pics)
+	byName := make(map[string]Picture, len(pics))
+	for _, p := range pics {
+		byName[p.Name] = p
+	}
+	items := make([]Picture, 0, len(answer.Results))
+	for _, hit := range answer.Results {
+		if p, ok := byName[hit.Name]; ok {
+			items = append(items, p)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"in": in, "query": query, "items": items, "total": len(items)})
+}
+
+// searchHit is one answer of the installation's meaning search.
+type searchHit struct {
+	Doc     string  `json:"doc"`
+	Name    string  `json:"name"`
+	Score   float64 `json:"score"`
+	Snippet string  `json:"snippet"`
+}
+
+// trimHits keeps the hits that are worth showing. The meaning search always answers with top_k
+// documents, whether they are relevant or not, and its scores have no absolute scale: 0.53 for the
+// pictures of this installation, 0.37 for its chapters. So the cut is relative to the best hit, with a
+// ceiling and a floor — a search that returns the whole collection is not a search (23.11.2026).
+func trimHits(hits []searchHit) []searchHit {
+	const maxHits = 24
+	const floor = 5
+	if len(hits) == 0 {
+		return hits
+	}
+	best := hits[0].Score
+	for _, h := range hits {
+		if h.Score > best {
+			best = h.Score
+		}
+	}
+	cutoff := best * 0.82
+	keep := 0
+	for keep < len(hits) && keep < maxHits && hits[keep].Score >= cutoff {
+		keep++
+	}
+	if keep < floor {
+		keep = floor
+		if keep > len(hits) {
+			keep = len(hits)
+		}
+	}
+	return hits[:keep]
 }

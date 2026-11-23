@@ -372,3 +372,97 @@ func TestEdgesEndpoint(t *testing.T) {
 		t.Errorf("without a memory: answered %d, want %d", res.StatusCode, http.StatusBadGateway)
 	}
 }
+
+// TestPictureMatches: the local search looks into the description and the tags as well as the file
+// name, and every word of the query must be found (23.11.2026).
+func TestPictureMatches(t *testing.T) {
+	meta := Meta{Tags: "Барон, попугай", Context: "глава о модели"}
+	pic := Picture{Name: "img_1.png", Description: "Верблюд на балконе с видом на город", Meta: &meta}
+	for _, tt := range []struct {
+		query string
+		want  bool
+	}{
+		{"img_1", true},
+		{"верблюд", true},
+		{"ВЕРБЛЮД балкон", true},
+		{"верблюд хинкали", false},
+		{"попугай", true}, // a tag
+		{"модели", true},  // the context of the record
+		{"модель", false}, // no stemming: "модель" is not inside "модели", and that is honest
+		{"", true},        // an empty query matches everything (the filter is not applied then)
+	} {
+		if got := pictureMatches(pic, strings.ToLower(tt.query)); got != tt.want {
+			t.Errorf("pictureMatches(%q) = %v, want %v", tt.query, got, tt.want)
+		}
+	}
+}
+
+// TestMatchArticleSnippet: a chapter answers by its title, its author and its text; the snippet is cut
+// around the hit and carries no markdown.
+func TestMatchArticleSnippet(t *testing.T) {
+	article := parseArticle("chapter.md", "# Глава. Попугай\n\n**Автор:** Барон\n\nНачало текста.\n\n![Картинка](img_1.png)\n\nПотом мы говорили про граф памяти, долго и подробно.\n")
+
+	if ok, snippet := matchArticle(article, "попугай"); !ok || snippet != "" {
+		t.Errorf("title match: ok=%v snippet=%q", ok, snippet)
+	}
+	if ok, _ := matchArticle(article, "Барон"); !ok {
+		t.Error("author match failed")
+	}
+	ok, snippet := matchArticle(article, "граф памяти")
+	if !ok {
+		t.Fatal("text match failed")
+	}
+	if strings.Contains(snippet, "![") || strings.Contains(snippet, "**") {
+		t.Errorf("snippet carries markdown: %q", snippet)
+	}
+	if !strings.Contains(snippet, "граф памяти") {
+		t.Errorf("snippet does not show the hit: %q", snippet)
+	}
+	if ok, _ := matchArticle(article, "хинкали"); ok {
+		t.Error("a chapter without the word answered yes")
+	}
+}
+
+// TestTrimHits: the meaning search always answers with top_k documents, so the cut is relative to the
+// best hit, with a ceiling and a floor.
+func TestTrimHits(t *testing.T) {
+	mk := func(scores ...float64) []searchHit {
+		out := make([]searchHit, len(scores))
+		for i, s := range scores {
+			out[i] = searchHit{Score: s, Name: "x"}
+		}
+		return out
+	}
+	if got := len(trimHits(mk(0.53, 0.52, 0.50, 0.44, 0.43, 0.35, 0.34))); got != 5 {
+		t.Errorf("a clear drop keeps %d hits, want 5", got)
+	}
+	if got := len(trimHits(mk(0.53, 0.52, 0.52, 0.52))); got != 4 {
+		t.Errorf("a flat answer keeps %d hits, want 4 (the floor)", got)
+	}
+	many := make([]float64, 60)
+	for i := range many {
+		many[i] = 0.5
+	}
+	if got := len(trimHits(mk(many...))); got != 24 {
+		t.Errorf("an even answer keeps %d hits, want 24 (the ceiling)", got)
+	}
+	if got := len(trimHits(mk())); got != 0 {
+		t.Errorf("an empty answer keeps %d hits", got)
+	}
+}
+
+// TestSearchNeedsAQuery: an empty query is not "everything", it is a mistake.
+func TestSearchNeedsAQuery(t *testing.T) {
+	a := &app{install: newInstallClient("http://127.0.0.1:1"), bucket: "галерея"}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	res, err := http.Get(srv.URL + "/api/search?in=pictures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("answered %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
+}

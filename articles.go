@@ -38,6 +38,9 @@ type Article struct {
 	Author      string   `json:"author,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Pictures    []string `json:"pictures,omitempty"`
+	// Snippet is the line a search found the query in: what a person needs to see before opening the
+	// chapter (23.11.2026).
+	Snippet string `json:"snippet,omitempty"`
 
 	sortDate string
 	text     string
@@ -79,6 +82,12 @@ var (
 	// A picture named without a host: src="name.png" and href="name.png".
 	reBareImg  = regexp.MustCompile(`src="([^"/]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))"`)
 	reBareLink = regexp.MustCompile(`href="([^"/]+\.(?:png|jpe?g|gif|webp|bmp|svg|avif|tiff?))"`)
+	// Markdown that a snippet should not carry: a picture becomes its caption, a link its words.
+	reMDImage = regexp.MustCompile(`!\[([^]]*)\]\([^)]*\)`)
+	reMDLink  = regexp.MustCompile(`\[([^]]*)\]\([^)]*\)`)
+	reRule    = regexp.MustCompile(`(?m)^\s*(?:---+|\*\*\*+)\s*$`)
+	// A rule that sits in the middle of a line of prose ("--- *— Барон*") is a rule as well.
+	reDashes = regexp.MustCompile(`\s*-{3,}\s*`)
 	// The **Key:** Value header of a chapter.
 	reHeader = regexp.MustCompile(`^\*\*([^*]+):\*\*\s*(.*?)\s*$`)
 	// A date as "12 июля 2026" or "2026-07-12".
@@ -154,6 +163,69 @@ func (r *articlesReader) List(ctx context.Context) ([]Article, error) {
 
 	r.list, r.byName, r.loadedAt = list, byName, time.Now()
 	return r.list, nil
+}
+
+// matchArticle says whether the chapter answers the query, and where: in the title, the author, the
+// date or the text. The snippet is cut around the first hit in the chapter itself.
+func matchArticle(article Article, query string) (bool, string) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return true, ""
+	}
+	haystacks := []string{article.Title, article.Author, article.Date, article.Description}
+	for _, text := range haystacks {
+		if strings.Contains(strings.ToLower(text), q) {
+			return true, ""
+		}
+	}
+	if i := strings.Index(strings.ToLower(article.text), q); i >= 0 {
+		return true, snippetAround(article.text, i, len(q))
+	}
+	return false, ""
+}
+
+// snippetAround cuts a window of the text around a hit: the words just before and after it, on one
+// line, with dots where the text was cut.
+func snippetAround(text string, start, length int) string {
+	const before, after = 90, 140
+	from := start - before
+	if from < 0 {
+		from = 0
+	}
+	to := start + length + after
+	if to > len(text) {
+		to = len(text)
+	}
+	// Do not start or end in the middle of a word: a snippet is read, not parsed.
+	for from > 0 && !isSpaceByte(text[from-1]) {
+		from--
+	}
+	for to < len(text) && !isSpaceByte(text[to]) {
+		to++
+	}
+	out := plainSnippet(text[from:to])
+	if from > 0 {
+		out = "… " + out
+	}
+	if to < len(text) {
+		out = out + " …"
+	}
+	return out
+}
+
+// plainSnippet cleans a window of markdown for reading: a picture keeps its caption, a link its
+// words, and the marks of the markup go away. A snippet is read, not rendered (23.11.2026).
+func plainSnippet(text string) string {
+	text = reMDImage.ReplaceAllString(text, "$1")
+	text = reMDLink.ReplaceAllString(text, "$1")
+	text = strings.NewReplacer("**", "", "*", "", "__", "", "`", "", "##", "", "#", "", ">", "").Replace(text)
+	text = reRule.ReplaceAllString(text, " ")
+	text = reDashes.ReplaceAllString(text, " ")
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func isSpaceByte(b byte) bool {
+	return b == ' ' || b == '\n' || b == '\t' || b == '\r'
 }
 
 // ByName answers a chapter by its file name. The old gallery recorded «Иллюстрация к главе» in the

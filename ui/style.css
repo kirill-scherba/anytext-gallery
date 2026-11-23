@@ -397,3 +397,6 @@ html.dark .hint { color: #4fd18b; }
 .viewer-edges .head { color: #bc8cff; font-weight: 600; margin-bottom: 4px; }
 .viewer-edges .edge .rel { color: var(--fg); }
 .viewer-edges .edge .who { color: var(--heading); }
+
+/* The line a search found the chapter in: dim, one paragraph, no more than two lines. */
+.toc-snippet { font-size: 14px; color: var(--muted); line-height: 1.6; font-style: italic; }
