@@ -36,6 +36,9 @@ type app struct {
 	// for the collection list on every scroll step.
 	root   string
 	rootAt time.Time
+
+	// edges is what the memory graph said about the pictures seen recently.
+	edges *edgesCache
 }
 
 // rootFolder answers the collection's folder, remembered for a minute.
@@ -60,6 +63,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/images", a.images)
 	mux.HandleFunc("GET /api/meta", a.meta)
 	mux.HandleFunc("POST /api/describe", a.describePicture)
+	mux.HandleFunc("GET /api/edges", a.pictureEdges)
 	mux.HandleFunc("POST /api/meta", a.saveMeta)
 	mux.HandleFunc("DELETE /api/meta", a.deleteMeta)
 	mux.HandleFunc("POST /api/migrate", a.migrate)
@@ -601,4 +605,26 @@ func (a *app) describePicture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "text": answer.Text, "model": answer.Model})
+}
+
+// pictureEdges answers the graph relations of one picture — the «Связи» list the old gallery showed
+// under a picture. Asked for the picture a person has just opened, and remembered for a couple of
+// minutes, because walking the viewer with the arrows should not mean a call per step (23.11.2026).
+func (a *app) pictureEdges(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		writeError(w, http.StatusBadRequest, errors.New("нужно имя картинки (name)"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	list, err := a.Edges(ctx, name)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	if list == nil {
+		list = []Edge{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"name": name, "edges": list})
 }

@@ -44,6 +44,9 @@ const STRINGS = {
     describeWithModel: 'Описать моделью',
     describeWaiting: 'Модель смотрит на картинку…',
     describeDone: 'Описание получено — проверьте и сохраните',
+    edges: 'Связи',
+    edgesNone: 'связей нет',
+    edgesError: 'связи не получены',
     articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
     articleSaved: 'Глава сохранена',
     articlesError: 'Статьи не пришли',
@@ -71,6 +74,9 @@ const STRINGS = {
     describeWithModel: 'Describe with a model',
     describeWaiting: 'The model is looking at the picture…',
     describeDone: 'The description is here — read it and save',
+    edges: 'Connections',
+    edgesNone: 'no connections',
+    edgesError: 'connections did not come',
     articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
     articleSaved: 'The chapter is saved',
     articlesError: 'The articles did not arrive',
@@ -344,6 +350,60 @@ async function loadThumb(card) {
 
 // --- the viewer --------------------------------------------------------------------------------
 
+/** edgeIcons is the graph's vocabulary as a person scans it: the same pictures the old gallery used,
+ *  so the same relation is recognised at a glance. */
+const edgeIcons = {
+  'иллюстрация': '📖',
+  'сгенерировал': '🤖',
+  'породил_идею': '💡',
+  'заказал': '🍽',
+  'был_в': '📍',
+  'фото_в': '📸',
+  'рассказ_о': '📖',
+  'направил': '✉️',
+  'упоминает': '🔖',
+}
+
+/** edgeLine turns one relation into one readable line. The relation keeps its own name — a graph has
+ *  its own words — and the arrow says which way it reads: the picture first when the edge starts at
+ *  it, the other end first when the picture is the one being talked about. */
+function edgeLine(edge, name) {
+  const icon = edgeIcons[edge.relation] || '↔'
+  const rel = esc(edge.relation.replaceAll('_', ' '))
+  const other = `<span class="who">${esc(edge.from === name ? edge.to : edge.from)}</span>`
+  if (edge.from === name) return `${icon} <span class="rel">${rel}</span> → ${other}`
+  return `${icon} ${other} → <span class="rel">${rel}</span>`
+}
+
+// edgeCache keeps what memory said about a picture while the viewer walks back and forth.
+const edgeCache = new Map()
+
+/** showEdges asks the module for the relations of the picture on screen and draws them under it. */
+async function showEdges(name) {
+  const box = $('viewerEdges')
+  box.hidden = true
+  box.innerHTML = ''
+  const cached = edgeCache.get(name)
+  const draw = (edges) => {
+    if (!edges || edges.length === 0) return
+    box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div>` +
+      edges.map((e) => `<div class="edge">${edgeLine(e, name)}</div>`).join('')
+    box.hidden = false
+  }
+  if (cached) { draw(cached); return }
+  try {
+    const answer = await api('api/edges?name=' + encodeURIComponent(name))
+    const edges = answer.edges || []
+    edgeCache.set(name, edges)
+    draw(edges)
+  } catch (e) {
+    // A graph that did not answer is not a picture without relations: say so, quietly, and let the
+    // picture stay the thing on screen.
+    box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div><div class="muted">${esc(t('edgesError'))}</div>`
+    box.hidden = false
+  }
+}
+
 let viewerIndex = -1
 
 async function openViewer(item) {
@@ -377,6 +437,7 @@ async function showViewer() {
     img.hidden = false
     img.alt = `${item.name} — ${t('error')}`
   }
+  showEdges(item.name)
   $('viewerPrev').disabled = viewerIndex <= 0
   $('viewerNext').disabled = viewerIndex >= state.items.length - 1 && state.done
 }

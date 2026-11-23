@@ -376,3 +376,21 @@ html.dark .hint { color: #4fd18b; }
 .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .field-head .small { font-size: 12px; padding: 2px 8px; }
 .field-head .small.busy { opacity: 0.6; cursor: progress; }
+
+/* The memory graph under a picture: the same «Связи» the old gallery had, in its own colour so it does
+   not read as part of the caption (23.11.2026). */
+.viewer-edges {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+  text-align: left;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.viewer-edges .head { color: #bc8cff; font-weight: 600; margin-bottom: 4px; }
+.viewer-edges .edge .rel { color: var(--fg); }
+.viewer-edges .edge .who { color: var(--heading); }

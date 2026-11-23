@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -280,4 +281,73 @@ func (m *memoryClient) Names(ctx context.Context) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// Edge is one relation of the memory graph that touches a picture: "иллюстрация", "заказал",
+// "упоминает" and the rest of the vocabulary.
+type Edge struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Relation string `json:"relation"`
+	Date     string `json:"date,omitempty"`
+	Source   string `json:"source,omitempty"`
+}
+
+// Edges answers the graph relations of one picture, as memory-store knows them. The old gallery showed
+// them under a picture in its viewer ("🔗 Связи"), and this is the same list, asked on demand: one call
+// per picture a person actually opens, not one per card of the grid (23.11.2026).
+func (m *memoryClient) Edges(ctx context.Context, name string) ([]Edge, error) {
+	raw, err := m.call(ctx, "graph_get_edges", map[string]any{"entity": name})
+	if err != nil {
+		return nil, err
+	}
+	var edges []Edge
+	if err := json.Unmarshal(raw, &edges); err == nil {
+		return edges, nil
+	}
+	// The tool answers with a sentence and the array under it: "Edges for "x.png": 2\n[...]".
+	text := string(raw)
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		if err := json.Unmarshal([]byte(strings.TrimSpace(text[i+1:])), &edges); err == nil {
+			return edges, nil
+		}
+	}
+	return nil, fmt.Errorf("ответ памяти о связях не разобран: %.120s", text)
+}
+
+// edgesCache keeps what the graph said about a picture for a couple of minutes: a person walks the
+// viewer with the arrows, and every step must not be a call to memory-store.
+type edgesCache struct {
+	mu   sync.Mutex
+	at   map[string]time.Time
+	list map[string][]Edge
+}
+
+func newEdgesCache() *edgesCache {
+	return &edgesCache{at: map[string]time.Time{}, list: map[string][]Edge{}}
+}
+
+// Edges answers the cached relations of a picture, asking memory-store when it has nothing fresh.
+func (a *app) Edges(ctx context.Context, name string) ([]Edge, error) {
+	if a.memory == nil {
+		return nil, fmt.Errorf("память не настроена")
+	}
+	if a.edges == nil {
+		a.edges = newEdgesCache()
+	}
+	a.edges.mu.Lock()
+	if list, ok := a.edges.list[name]; ok && time.Since(a.edges.at[name]) < 2*time.Minute {
+		a.edges.mu.Unlock()
+		return list, nil
+	}
+	a.edges.mu.Unlock()
+
+	list, err := a.memory.Edges(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	a.edges.mu.Lock()
+	a.edges.list[name], a.edges.at[name] = list, time.Now()
+	a.edges.mu.Unlock()
+	return list, nil
 }

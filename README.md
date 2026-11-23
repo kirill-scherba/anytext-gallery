@@ -42,7 +42,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 |---|---|
 | grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
 | previews | taken from `/api/thumb` with the account token, six at a time, when a card comes near the screen |
-| viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes |
+| viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search | by name of the file and its folder |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
@@ -63,6 +63,7 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 | `GET /api/config` | the collection the module works with |
 | `GET /api/images?offset=&limit=&q=&sort=` | one page of the grid: `{bucket, total, offset, limit, items}` |
 | `GET /api/meta?name=` · `POST` · `DELETE` | the description of a picture in `memory/gallery/meta/<file>`, copied into the installation |
+| `GET /api/edges?name=` | the memory graph's relations of one picture (`graph_get_edges`), asked when a picture is opened and remembered for two minutes |
 | `POST /api/describe?doc=` | the installation's vision model looks at the picture (`doc.describe` — the same command the window's «Описать моделью» runs); the answer fills the editor, it is not saved |
 | `GET`/`POST`/`DELETE /api/public` | the public copy of a picture (`https://bmat.uk/i/pub/<file>`) |
 | `POST /api/trash` | a picture goes to the trash of the installation, the file stays |

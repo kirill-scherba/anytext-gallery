@@ -345,3 +345,30 @@ func TestDescribeRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestEdgesEndpoint: the relations are asked by name, and a memory that is not configured says so
+// instead of answering "no relations" — an empty list and a broken door look the same on screen
+// (23.11.2026).
+func TestEdgesEndpoint(t *testing.T) {
+	a := &app{install: newInstallClient("http://127.0.0.1:1"), bucket: "галерея"}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	res, err := http.Get(srv.URL + "/api/edges")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("without a name: answered %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
+
+	res, err = http.Get(srv.URL + "/api/edges?name=x.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadGateway {
+		t.Errorf("without a memory: answered %d, want %d", res.StatusCode, http.StatusBadGateway)
+	}
+}
