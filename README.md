@@ -45,7 +45,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search | by name of the file and its folder |
-| связis mark | a card the memory graph knows something about carries «🔗 N» — the old gallery's «Связи» button; the relations themselves are under the picture in the viewer |
+| graph mark | a card the memory graph knows something about carries «🔗 N» — the old gallery's «Связи» button; the relations themselves are under the picture in the viewer |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
 | articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
