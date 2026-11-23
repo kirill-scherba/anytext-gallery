@@ -45,10 +45,11 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search | by name of the file and its folder |
+| связis mark | a card the memory graph knows something about carries «🔗 N» — the old gallery's «Связи» button; the relations themselves are under the picture in the viewer |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
 | articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
-| story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text, nobody fills it by hand |
+| story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text; a picture whose meta names a chapter (the 19 records bmat left) gets it too, even when the chapter does not spell the file name out |
 | article editor | «Редактировать» on a chapter opens its markdown — the file as it is, not the extracted text — and saves it back with `doc.save_raw`; the button is offered only to a person who holds the write right |
 
 The screen is **one self-contained document**: styles and script inside the page. A module split into

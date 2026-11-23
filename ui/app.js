@@ -237,6 +237,7 @@ function renderCards(items) {
     card.title = item.name
     card.innerHTML = `<div class="thumb"><span class="ph">${esc(shortName(item.name))}</span></div>` +
       cardInfoHTML(item)
+    card._item = item
     const thumb = card.querySelector('.thumb')
     thumb.addEventListener('click', () => openViewer(item))
     bindCardInfo(card, item)
@@ -253,6 +254,8 @@ function bindCardInfo(card, item) {
   if (pub) pub.addEventListener('click', (event) => { event.stopPropagation(); togglePublic(item, card) })
   const trash = card.querySelector('[data-act="trash"]')
   if (trash) trash.addEventListener('click', (event) => { event.stopPropagation(); trashPicture(item, card) })
+  const edges = card.querySelector('[data-act="edges"]')
+  if (edges) edges.addEventListener('click', (event) => { event.stopPropagation(); openViewer(item) })
   const story = card.querySelector('[data-act="story"]')
   if (story) story.addEventListener('click', (event) => { event.stopPropagation(); openArticle(item.story_name) })
 }
@@ -276,6 +279,7 @@ function cardInfoHTML(item) {
     <div class="date">${esc(when)}</div>
     ${desc ? `<div class="desc">${esc(desc)}</div>` : ''}
     <div class="actions">
+      ${item.edges ? `<button type="button" class="text graph-btn" data-act="edges" title="${esc(t('edges'))}">🔗 ${item.edges}</button>` : ''}
       <button type="button" class="text ${item.public ? 'unpub' : 'pub'}" data-act="public">${esc(item.public ? t('unpublic') : t('makePublic'))}</button>
       <button type="button" class="text" data-act="edit">${esc(t('edit'))}</button>
       ${item.story ? `<button type="button" class="text story-btn" data-act="story">${esc(t('story'))}</button>` : ''}
@@ -327,6 +331,8 @@ async function loadThumb(card) {
   if (card.dataset.loaded === '1') return
   card.dataset.loaded = '1'
   const doc = card.dataset.doc
+  // The relations come with the preview: both are about the card a person is looking at.
+  if (card._item) loadCardEdges(card, card._item)
   // An SVG is not a photograph: the preview endpoint renders pictures, so a vector is taken whole
   // and the browser draws it.
   const vector = /\.svg$/i.test(doc)
@@ -378,24 +384,64 @@ function edgeLine(edge, name) {
 // edgeCache keeps what memory said about a picture while the viewer walks back and forth.
 const edgeCache = new Map()
 
+// The grid asks the memory about the relations of the cards it shows — four at a time, and once per
+// card: a collection of two hundred pictures must not become two hundred requests at once.
+const edgeQueue = []
+let edgeRunning = 0
+
+function edgeJob(fn) {
+  return new Promise((resolve, reject) => {
+    edgeQueue.push({ fn, resolve, reject })
+    pumpEdges()
+  })
+}
+
+function pumpEdges() {
+  while (edgeRunning < 4 && edgeQueue.length > 0) {
+    const job = edgeQueue.shift()
+    edgeRunning++
+    job.fn()
+      .then(job.resolve, job.reject)
+      .finally(() => { edgeRunning--; pumpEdges() })
+  }
+}
+
+/** getEdges answers the relations of one picture, from the cache or from the module. */
+async function getEdges(name) {
+  if (edgeCache.has(name)) return edgeCache.get(name)
+  const answer = await edgeJob(() => api('api/edges?name=' + encodeURIComponent(name)))
+  const edges = answer.edges || []
+  edgeCache.set(name, edges)
+  return edges
+}
+
+/** loadCardEdges puts the old gallery's «Связи» mark on a card: a picture the graph knows something
+ *  about says so at a glance, instead of only after opening it. */
+async function loadCardEdges(card, item) {
+  if (!item || item.edges !== undefined) return
+  try {
+    const edges = await getEdges(item.name)
+    item.edges = edges.length
+    if (edges.length > 0 && card.isConnected) redrawInfo(card, item)
+  } catch (e) {
+    // A graph that did not answer is not a picture without relations; the card stays as it is.
+    item.edges = 0
+  }
+}
+
 /** showEdges asks the module for the relations of the picture on screen and draws them under it. */
 async function showEdges(name) {
   const box = $('viewerEdges')
   box.hidden = true
   box.innerHTML = ''
-  const cached = edgeCache.get(name)
   const draw = (edges) => {
     if (!edges || edges.length === 0) return
     box.innerHTML = `<div class="head">🔗 ${esc(t('edges'))}</div>` +
       edges.map((e) => `<div class="edge">${edgeLine(e, name)}</div>`).join('')
     box.hidden = false
   }
-  if (cached) { draw(cached); return }
   try {
-    const answer = await api('api/edges?name=' + encodeURIComponent(name))
-    const edges = answer.edges || []
-    edgeCache.set(name, edges)
-    draw(edges)
+    draw(await getEdges(name))
   } catch (e) {
     // A graph that did not answer is not a picture without relations: say so, quietly, and let the
     // picture stay the thing on screen.

@@ -213,6 +213,9 @@ main {
 .card .info .actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .card .info .actions button { font-size: 11px; padding: 3px 9px; border-radius: 4px; }
 .card .info .actions .pub { color: #3fb950; border-color: #3fb950; }
+/* The graph mark on a card: the old gallery's «Связи» button, in its own colour so a picture that the
+   memory knows about is told apart from one it does not (23.11.2026). */
+.card .info .actions .graph-btn { color: #bc8cff; border-color: #bc8cff; }
 .card .info .actions .unpub { color: #d29922; border-color: #d29922; }
 .card .info .actions .del { color: #f85149; border-color: #f85149; }
 .card .info .pub-url { margin-top: 6px; font-size: 11px; word-break: break-all; }

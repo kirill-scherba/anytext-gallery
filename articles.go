@@ -156,6 +156,23 @@ func (r *articlesReader) List(ctx context.Context) ([]Article, error) {
 	return r.list, nil
 }
 
+// ByName answers a chapter by its file name. The old gallery recorded «Иллюстрация к главе» in the
+// picture's own meta, and that link must keep working even when the chapter does not spell the file
+// name out — 19 such records came from bmat (23.11.2026).
+func (r *articlesReader) ByName(ctx context.Context, name string) (Article, bool) {
+	if _, err := r.List(ctx); err != nil {
+		return Article{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, article := range r.list {
+		if article.Name == name {
+			return article, true
+		}
+	}
+	return Article{}, false
+}
+
 // Forget drops the parsed articles: an edited chapter must be read from the file again.
 func (r *articlesReader) Forget() {
 	r.mu.Lock()

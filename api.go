@@ -186,6 +186,19 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// The old gallery's own link: a picture whose meta names a chapter is shown with «Рассказ» even
+	// when the chapter never spells the file name out. A chapter that no longer exists is not a link —
+	// a button that leads nowhere is worse than no button (23.11.2026).
+	if a.articles != nil {
+		for i := range page {
+			if page[i].StoryName != "" || page[i].Meta == nil || strings.TrimSpace(page[i].Meta.Memoir) == "" {
+				continue
+			}
+			if article, ok := a.articles.ByName(ctx, strings.TrimSpace(page[i].Meta.Memoir)); ok {
+				page[i].Story, page[i].StoryName = article.Title, article.Name
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bucket": a.bucket,
 		"total":  total,
