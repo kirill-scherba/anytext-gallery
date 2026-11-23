@@ -39,6 +39,8 @@ type app struct {
 
 	// edges is what the memory graph said about the pictures seen recently.
 	edges *edgesCache
+	// mediaCache is the relay's permit for picture addresses, kept until it nearly ends.
+	mediaCache *mediaCache
 }
 
 // rootFolder answers the collection's folder, remembered for a minute.
@@ -64,6 +66,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/meta", a.meta)
 	mux.HandleFunc("POST /api/describe", a.describePicture)
 	mux.HandleFunc("GET /api/edges", a.pictureEdges)
+	mux.HandleFunc("GET /api/signed", a.signedMedia)
 	mux.HandleFunc("POST /api/meta", a.saveMeta)
 	mux.HandleFunc("DELETE /api/meta", a.deleteMeta)
 	mux.HandleFunc("POST /api/migrate", a.migrate)
@@ -163,13 +166,24 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	page := pics[offset:end]
-	writeJSON(w, http.StatusOK, map[string]any{
+	answer := map[string]any{
 		"bucket": a.bucket,
 		"total":  total,
 		"offset": offset,
 		"limit":  limit,
 		"items":  page,
-	})
+	}
+	// A relayed installation serves pictures only with a media permit, and the browser cannot put a
+	// header on an <img src>: the permit travels with the page (23.11.2026).
+	// The permit is for a browser that reaches the installation through the relay. On the machine that
+	// holds the installation the pictures are local, and sending them through the relay instead would be
+	// a detour for nothing (23.11.2026).
+	if len(page) > 0 && wantsMedia(r) {
+		if media, ok := a.media(ctx, page[0].Doc, 400); ok {
+			answer["media"] = media
+		}
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -478,6 +492,16 @@ func (a *app) article(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		page["docs"] = docs
+		// The chapter's pictures are fetched through the relay as well: the permit travels with the
+		// page (23.11.2026).
+		if wantsMedia(r) {
+			for _, doc := range docs {
+				if media, ok := a.media(ctx, doc, 1400); ok {
+					page["media"] = media
+					break
+				}
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, page)
 }
@@ -801,4 +825,44 @@ func trimHits(hits []searchHit) []searchHit {
 		}
 	}
 	return hits[:keep]
+}
+
+// signedMedia answers a fresh permit: the screen asks for one when a picture that used to load comes
+// back 401, which is what an expired permit looks like (23.11.2026).
+func (a *app) signedMedia(w http.ResponseWriter, r *http.Request) {
+	doc := strings.TrimSpace(r.URL.Query().Get("doc"))
+	max := 400
+	if v := r.URL.Query().Get("max"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
+			max = n
+		}
+	}
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	// A refresh is asked for on purpose: the kept permit is what the screen already has.
+	if a.mediaCache != nil {
+		a.mediaCache.mu.Lock()
+		a.mediaCache.token = ""
+		a.mediaCache.mu.Unlock()
+	}
+	media, ok := a.media(ctx, doc, max)
+	if !ok {
+		// No relay, no account, or a relay that refused: the screen falls back to the plain address,
+		// and this is not an error of the gateway — the console must stay clean (23.11.2026).
+		writeJSON(w, http.StatusOK, map[string]any{"media": nil, "note": "пропуск не выписан"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"media": media})
+}
+
+// wantsMedia says whether the screen asked for the relay's permit with this request. The screen knows
+// what the module cannot see: a page served as /s/<id>/api/module/... came through the relay, and its
+// pictures need a permit; a page served at /api/module/... is on the machine that holds the pictures,
+// and a detour through the relay there would only be slower (23.11.2026).
+func wantsMedia(r *http.Request) bool {
+	return r.URL.Query().Get("media") == "1" || r.Header.Get("X-AnyText-Relay") != ""
 }

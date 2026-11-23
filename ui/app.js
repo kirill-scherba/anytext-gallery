@@ -163,6 +163,8 @@ const state = {
   // asking for more pages (23.11.2026).
   semantic: 0,
   articleQ: '',
+  // media is the relay's permit for picture addresses: {base, token, expires_in}.
+  media: null,
 }
 
 // One page of the grid: a window taller than sixty cards asks for the next page at once.
@@ -334,10 +336,64 @@ async function paintPicture(img, bucket, doc, max, address) {
   void picTrim(db)
 }
 
+/** relayed says the page came through the relay (/s/<id>/api/module/...): its pictures need a media
+ *  permit, while a page served on the installation itself takes them from disk (23.11.2026). */
+function relayed() {
+  return location.pathname.startsWith('/s/')
+}
+
+/** mediaBase is where the pictures are served: the relay's address when the installation handed out a
+ *  permit, the installation itself otherwise. */
+function mediaBase() {
+  return state.media && state.media.base ? state.media.base : installBase()
+}
+
+/** withPermit adds the relay's media permit. A browser cannot put an Authorization header on an
+ *  <img src>, so the permit travels in the query — without it a relayed picture answers 401, which is
+ *  the one picture that broke while the rest came from the cache (23.11.2026). */
+function withPermit(params) {
+  if (state.media && state.media.token) params.set('mt', state.media.token)
+  return params
+}
+
 /** thumbURL is the installation's preview of one picture. */
 function thumbURL(doc, max) {
-  const q = new URLSearchParams({ bucket: state.bucket, doc, max: String(max) })
-  return `${installBase()}/api/thumb?${q.toString()}`
+  const q = withPermit(new URLSearchParams({ bucket: state.bucket, doc, max: String(max) }))
+  return `${mediaBase()}/api/thumb?${q.toString()}`
+}
+
+let mediaRefresh = null
+
+/** refreshMedia asks the module for a fresh permit. One call at a time: a screen full of pictures that
+ *  expired together must not become a screen full of permit requests (23.11.2026). */
+async function refreshMedia(doc, max) {
+  if (!mediaRefresh) {
+    mediaRefresh = api('api/signed?doc=' + encodeURIComponent(doc) + '&max=' + max)
+      .then((answer) => {
+        if (answer && answer.media) state.media = answer.media
+        return answer && answer.media
+      })
+      .finally(() => { mediaRefresh = null })
+  }
+  return mediaRefresh
+}
+
+/** pictureFallback walks the three answers to a picture that did not come: a fresh permit, then the
+ *  picture itself, then the truth. */
+function pictureFallback(img, doc, max, final) {
+  const step = Number(img.dataset.step || 0)
+  img.dataset.step = String(step + 1)
+  if (step === 0) {
+    refreshMedia(doc, max)
+      .then((media) => { if (img.isConnected) img.src = media ? previewURL(doc, max) : fileURL(doc) })
+      .catch(() => { if (img.isConnected) img.src = fileURL(doc) })
+    return
+  }
+  if (step === 1) {
+    img.src = fileURL(doc)
+    return
+  }
+  final()
 }
 
 /** previewURL is the installation's preview — the one it renders once and keeps in its own cache
@@ -350,8 +406,8 @@ function previewURL(doc, max) {
 
 /** fileURL is the picture itself, not compressed. */
 function fileURL(doc) {
-  const q = new URLSearchParams({ bucket: state.bucket, doc })
-  return `${installBase()}/api/file?${q.toString()}`
+  const q = withPermit(new URLSearchParams({ bucket: state.bucket, doc }))
+  return `${mediaBase()}/api/file?${q.toString()}`
 }
 
 async function loadConfig() {
@@ -378,7 +434,9 @@ async function loadPage(reset) {
   try {
     const q = new URLSearchParams({ offset: String(state.offset), limit: String(LIMIT), sort: state.sort })
     if (state.q) q.set('q', state.q)
+    if (relayed()) q.set('media', '1')
     const page = await api('api/images?' + q.toString())
+    if (page.media) state.media = page.media
     state.total = page.total
     state.offset = page.offset + page.items.length
     state.done = page.items.length === 0 || state.offset >= page.total
@@ -518,15 +576,7 @@ async function loadThumb(card) {
   img.alt = card.title
   img.loading = 'lazy'
   img.decoding = 'async'
-  img.addEventListener('error', () => {
-    // A preview that did not come is not a broken picture: ask for the picture itself once.
-    if (!img.dataset.fallback) {
-      img.dataset.fallback = '1'
-      img.src = fileURL(doc)
-      return
-    }
-    card.classList.add('broken')
-  })
+  img.addEventListener('error', () => pictureFallback(img, doc, 400, () => card.classList.add('broken')))
   thumb.innerHTML = ''
   thumb.appendChild(img)
   paintPicture(img, state.bucket, doc, 400, previewURL(doc, 400))
@@ -658,18 +708,13 @@ async function showViewer() {
   img.alt = item.name
   spinner.hidden = false
   delete img.dataset.fallback
+  delete img.dataset.step
   img.onload = () => { spinner.hidden = true; img.hidden = false }
-  img.onerror = () => {
-    // A preview that did not come — ask for the picture itself before calling it broken.
-    if (!img.dataset.fallback) {
-      img.dataset.fallback = '1'
-      img.src = fileURL(item.doc)
-      return
-    }
+  img.onerror = () => pictureFallback(img, item.doc, 1400, () => {
     spinner.hidden = true
     img.hidden = false
     img.alt = `${item.name} — ${t('error')}`
-  }
+  })
   paintPicture(img, state.bucket, item.doc, 1400, previewURL(item.doc, 1400))
   const original = $('viewerOriginal')
   original.href = fileURL(item.doc)
@@ -1202,7 +1247,8 @@ async function openArticle(name) {
   $('storyBody').innerHTML = `<div class="empty">${esc(t('loading'))}</div>`
   $('scroller').scrollTop = 0
   try {
-    const page = await api('api/article?name=' + encodeURIComponent(name))
+    const page = await api('api/article?name=' + encodeURIComponent(name) + (relayed() ? '&media=1' : ''))
+    if (page.media) state.media = page.media
     $('storyTitle').textContent = page.title || name
     const date = formatDate(page.date)
     $('storyMeta').textContent = [date, page.place].filter(Boolean).join(' · ')
@@ -1225,12 +1271,9 @@ async function openArticle(name) {
       // decode both at full size (23.11.2026).
       img.loading = 'lazy'
       paintPicture(img, state.bucket, doc, 1400, previewURL(doc, 1400))
-      img.addEventListener('error', () => {
-        if (!img.dataset.fallback) {
-          img.dataset.fallback = '1'
-          img.src = fileURL(doc)
-        }
-      })
+      img.addEventListener('error', () => pictureFallback(img, doc, 1400, () => {
+        img.alt = `${picture} — ${t('error')}`
+      }))
     }
     for (const link of $('storyBody').querySelectorAll('a[data-gallery]')) {
       const doc = docs[link.dataset.gallery]

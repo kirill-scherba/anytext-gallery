@@ -66,6 +66,7 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 | `GET /api/config` | the collection the module works with |
 | `GET /api/images?offset=&limit=&q=&sort=` | one page of the grid: `{bucket, total, offset, limit, items}` |
 | `GET /api/meta?name=` · `POST` · `DELETE` | the description of a picture in `memory/gallery/meta/<file>`, copied into the installation |
+| `GET /api/signed?doc=&max=` | a fresh relay media permit (`{media: {base, token, expires_in}}`); asked when a picture answers 401 |
 | `GET /api/edges?name=` | the memory graph's relations of one picture (`graph_get_edges`), asked when a picture is opened and remembered for two minutes. A picture nobody has linked answers `{"edges": []}` with 200 — «No edges found» is an answer, not an error; a memory that did not answer answers 200 with `unavailable: true` |
 | `POST /api/describe?doc=` | the installation's vision model looks at the picture (`doc.describe` — the same command the window's «Описать моделью» runs); the answer fills the editor, it is not saved |
 | `GET`/`POST`/`DELETE /api/public` | the public copy of a picture (`https://bmat.uk/i/pub/<file>`) |
