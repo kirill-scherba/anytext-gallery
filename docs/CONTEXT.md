@@ -167,6 +167,12 @@ follow the old sizes and margins.
 - Checked on `baron-parrot.png`: 4 s, 508 characters, model `deepseek-v4.1-flash:cloud`; the field filled,
   «Отмена» left memory and the index untouched.
 
+### 0.4.3 — the confirmation is one word (23.11.2026)
+
+«Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat» ушло: человеку,
+который нажал «Сохранить», нужен один ответ. Осталась строка «Сохранено», а разница между двумя местами
+видна только когда что-то пошло не так — тогда «Сохранено в память, но не в установку: <причина>».
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

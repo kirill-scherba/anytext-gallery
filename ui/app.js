@@ -47,8 +47,8 @@ const STRINGS = {
     articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
     articleSaved: 'Глава сохранена',
     articlesError: 'Статьи не пришли',
-    savedToMemory: 'Сохранено в установке (описание сразу в индексе). Копия — в память галереи, для старой bmat.',
-    savedPartial: 'В память галереи сохранилось, а в установку — нет:', articlesSoon: 'Статьи — следующий шаг',
+    savedToMemory: 'Сохранено',
+    savedPartial: 'Сохранено в память, но не в установку:', articlesSoon: 'Статьи — следующий шаг',
     install: 'установка', collection: 'коллекция',
   },
   en: {
@@ -74,8 +74,8 @@ const STRINGS = {
     articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
     articleSaved: 'The chapter is saved',
     articlesError: 'The articles did not arrive',
-    savedToMemory: 'Saved in the installation (the description is indexed at once). A copy went to the gallery memory, for the old bmat.',
-    savedPartial: 'Saved in the gallery memory, but not in the installation:', articlesSoon: 'Articles are the next step',
+    savedToMemory: 'Saved',
+    savedPartial: 'Saved in the memory, but not in the installation:', articlesSoon: 'Articles are the next step',
     install: 'installation', collection: 'collection',
   },
 }
