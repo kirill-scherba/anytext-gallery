@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 // articleCacheTTL is how long the list of articles (and the picture -> story index) is trusted.
@@ -64,8 +65,12 @@ func newArticlesReader(install *installClient, bucket string) *articlesReader {
 	return &articlesReader{install: install, bucket: bucket}
 }
 
-// markdown is the renderer: tables, lists, headings and images are enough for a memoir.
-var markdown = goldmark.New()
+// markdown is the renderer: tables, lists, headings and images are enough for a memoir. A table is
+// GFM, not plain markdown, and goldmark leaves GFM off unless asked — «История AnyText» has a table in
+// its first screen and it rendered as a wall of pipes (23.11.2026).
+var markdown = goldmark.New(
+	goldmark.WithExtensions(extension.Table, extension.Strikethrough, extension.TaskList, extension.Linkify),
+)
 
 var (
 	// A picture in an article: ![alt](https://bmat.uk/i/name.png) or .../i/pub/name.png.

@@ -42,7 +42,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 |---|---|
 | grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
 | previews | the installation's `/api/thumb` — its own cache, memory and disk — and the **browser cache of the window itself**: the module reads and fills the same IndexedDB (`anytext-pictures`, key `collection/document@size`, 200 MB, seven days) that anytext-gui keeps, so a picture seen in the window opens in the gallery at once and the other way round. A chapter and the viewer ask for a 1400 px preview, not the original; the viewer carries an «оригинал» link |
-| viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
+| viewer | the picture itself (a 1400 px preview from the installation's cache), its name, arrows and `←`/`→`, `Esc` closes; under the name — «оригинал» (the full file), «Рассказ» (the chapter it is in, when it is in one) and **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | the pencil | in the dense grid the caption is hidden, so the picture carries a pencil in its corner: hover on a computer, always on a touch screen |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search (pictures) | by file name, folder, description and tags — every word of the query must be found; instant, no model involved |
@@ -51,7 +51,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | graph mark | a card the memory graph knows something about carries «🔗 N» — the old gallery's «Связи» button; the relations themselves are under the picture in the viewer |
 | meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
-| articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
+| articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page — markdown with GFM tables, strikethrough, task lists and linkified addresses — and its pictures open the viewer |
 | story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text; a picture whose meta names a chapter (the 19 records bmat left) gets it too, even when the chapter does not spell the file name out |
 | article editor | «Редактировать» on a chapter opens its markdown — the file as it is, not the extracted text — and saves it back with `doc.save_raw`; the button is offered only to a person who holds the write right |
 

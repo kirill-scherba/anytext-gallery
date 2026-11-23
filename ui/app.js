@@ -729,6 +729,16 @@ async function showViewer() {
   const original = $('viewerOriginal')
   original.href = fileURL(item.doc)
   original.hidden = false
+  // The chapter this picture is in: a person who opened a picture to look at it often wants the story
+  // it came from, and before this the only way back was to close the viewer and find the card
+  // (23.11.2026).
+  const story = $('viewerStory')
+  story.hidden = !item.story_name
+  if (item.story_name) {
+    story.textContent = t('story')
+    story.title = item.story || item.story_name
+    story.dataset.name = item.story_name
+  }
   showEdges(item.name)
   $('viewerPrev').disabled = viewerIndex <= 0
   $('viewerNext').disabled = viewerIndex >= state.items.length - 1 && state.done
@@ -1051,6 +1061,13 @@ function bind() {
   $('metaCancel').addEventListener('click', () => $('meta').close())
   $('metaDelete').addEventListener('click', deleteMeta)
   $('viewerClose').addEventListener('click', closeViewer)
+  $('viewerStory').addEventListener('click', () => {
+    const name = $('viewerStory').dataset.name
+    if (!name) return
+    closeViewer()
+    showTab('articles')
+    openArticle(name)
+  })
   $('viewerPrev').addEventListener('click', () => stepViewer(-1))
   $('viewerNext').addEventListener('click', () => stepViewer(1))
   $('viewer').addEventListener('click', (event) => {
@@ -1272,7 +1289,7 @@ async function openArticle(name) {
       img.dataset.doc = doc
       img.classList.add('story-picture')
       img.addEventListener('click', () => {
-        const item = { doc, name: picture }
+        const item = { doc, name: picture, story_name: name, story: $('storyTitle').textContent }
         state.items = [item]
         viewerIndex = 0
         showViewer()
@@ -1290,7 +1307,7 @@ async function openArticle(name) {
       if (!doc) continue
       link.addEventListener('click', (event) => {
         event.preventDefault()
-        const item = { doc, name: link.dataset.gallery }
+        const item = { doc, name: link.dataset.gallery, story_name: name, story: $('storyTitle').textContent }
         state.items = [item]
         viewerIndex = 0
         showViewer()

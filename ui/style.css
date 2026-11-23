@@ -457,3 +457,39 @@ html.dark .hint { color: #4fd18b; }
   .viewer-nav.next { right: 6px; left: auto; }
   .viewer-edges { font-size: 12px; max-height: 22vh; overflow-y: auto; }
 }
+
+/* A table in a chapter: the memoirs keep their numbers in tables, and a wall of pipes is not a
+   table. Bordered rows, a quiet header, and the frame scrolls on a narrow screen instead of pushing
+   the page wider (23.11.2026). */
+.story .story-body table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 15px;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.story .story-body th,
+.story .story-body td {
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  text-align: left;
+  vertical-align: top;
+ }
+.story .story-body thead th { background: var(--soft); font-weight: 600; }
+.story .story-body tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--soft) 55%, transparent); }
+
+/* The story link sits beside the original: same quiet weight, a button because it opens a page in
+   this window rather than a new tab (23.11.2026). */
+.viewer figcaption #viewerStory {
+  margin-left: 10px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.viewer figcaption #viewerStory:hover { color: var(--heading); }
