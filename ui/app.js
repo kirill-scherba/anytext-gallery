@@ -41,6 +41,9 @@ const STRINGS = {
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
     backToArticles: 'к статьям', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор', contents: 'Оглавление',
     editArticle: 'Редактировать',
+    describeWithModel: 'Описать моделью',
+    describeWaiting: 'Модель смотрит на картинку…',
+    describeDone: 'Описание получено — проверьте и сохраните',
     articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
     articleSaved: 'Глава сохранена',
     articlesError: 'Статьи не пришли',
@@ -65,6 +68,9 @@ const STRINGS = {
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
     backToArticles: 'back to the articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author', contents: 'Contents',
     editArticle: 'Edit',
+    describeWithModel: 'Describe with a model',
+    describeWaiting: 'The model is looking at the picture…',
+    describeDone: 'The description is here — read it and save',
     articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
     articleSaved: 'The chapter is saved',
     articlesError: 'The articles did not arrive',
@@ -457,6 +463,33 @@ async function openMeta(item) {
   }
 }
 
+/** describeMeta asks the installation's vision model about the picture and puts its words into the
+ *  description field: the same command the window's own «Описать моделью» button runs. */
+async function describeMeta() {
+  if (!editingMeta) return
+  const error = $('metaError')
+  const saved = $('metaSaved')
+  const button = $('metaDescribe')
+  error.hidden = true
+  saved.hidden = true
+  button.disabled = true
+  button.classList.add('busy')
+  button.textContent = t('describeWaiting')
+  try {
+    const answer = await api('api/describe?doc=' + encodeURIComponent(editingMeta.doc), { method: 'POST' })
+    $('fDescription').value = answer.text || ''
+    saved.textContent = `${t('describeDone')}${answer.model ? ' · ' + answer.model : ''}`
+    saved.hidden = false
+  } catch (e) {
+    error.textContent = e.message
+    error.hidden = false
+  } finally {
+    button.disabled = false
+    button.classList.remove('busy')
+    button.textContent = t('describeWithModel')
+  }
+}
+
 async function saveMeta(event) {
   event.preventDefault()
   if (!editingMeta) return
@@ -640,6 +673,8 @@ function bind() {
   })
 
   $('metaForm').addEventListener('submit', saveMeta)
+  $('metaDescribe').addEventListener('click', describeMeta)
+  if (document.body.dataset.write === 'false') $('metaDescribe').hidden = true
   $('metaCancel').addEventListener('click', () => $('meta').close())
   $('metaDelete').addEventListener('click', deleteMeta)
   $('viewerClose').addEventListener('click', closeViewer)

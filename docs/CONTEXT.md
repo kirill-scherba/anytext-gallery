@@ -154,6 +154,19 @@ follow the old sizes and margins.
 - Verified on a copy: a temporary collection in `/tmp` with a copy of a chapter, a second instance of
   the module on its own port, the edit saved and the page rebuilt; the real chapter's md5 unchanged.
 
+## «Описать моделью» (0.4.2, 23.11.2026)
+
+- The meta editor carries the model's button: it runs the installation's own `doc.describe` — the same
+  command behind the window's «Описать моделью» — and puts the answer into the description field. It is a
+  draft: the person reads it and presses «Сохранить», which is what writes memory and the installation's
+  index. A model that answers nothing, or an installation without a vision model, is named in the error
+  line instead of leaving the field empty.
+- `POST /api/describe?doc=` needs the write right (a model call is not a read), a document, and waits
+  150 s — the installation gives a model two minutes, and the module's client now waits three so a slow
+  answer cannot look like a broken module.
+- Checked on `baron-parrot.png`: 4 s, 508 characters, model `deepseek-v4.1-flash:cloud`; the field filled,
+  «Отмена» left memory and the index untouched.
+
 ## Next steps
 
 1. Metadata: description, tags, prompt, links — read/write in memory-store, and the copy into the

@@ -45,7 +45,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search | by name of the file and its folder |
-| meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description |
+| meta | description, tags, context, generation prompt, the story a picture belongs to: read from `memory/gallery/meta/<file>`, written there and **copied** into the installation as the picture's description. «Описать моделью» asks the installation's vision model and puts its words into the field as a draft |
 | migrate | `POST /api/migrate` copies every known description into the installation once |
 | articles | the tab shows the chapters of a collection (the memoirs): newest first, with a date and the first line; a chapter opens as a page, its pictures open the viewer |
 | story | a picture that appears in a chapter gets a «Рассказ» button — the link is computed from the chapter's text, nobody fills it by hand |
@@ -63,6 +63,7 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 | `GET /api/config` | the collection the module works with |
 | `GET /api/images?offset=&limit=&q=&sort=` | one page of the grid: `{bucket, total, offset, limit, items}` |
 | `GET /api/meta?name=` · `POST` · `DELETE` | the description of a picture in `memory/gallery/meta/<file>`, copied into the installation |
+| `POST /api/describe?doc=` | the installation's vision model looks at the picture (`doc.describe` — the same command the window's «Описать моделью» runs); the answer fills the editor, it is not saved |
 | `GET`/`POST`/`DELETE /api/public` | the public copy of a picture (`https://bmat.uk/i/pub/<file>`) |
 | `POST /api/trash` | a picture goes to the trash of the installation, the file stays |
 | `POST /api/migrate` | every known description is copied into the installation once |

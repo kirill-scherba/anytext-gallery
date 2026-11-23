@@ -30,7 +30,10 @@ type installClient struct {
 }
 
 func newInstallClient(base string) *installClient {
-	return &installClient{base: strings.TrimRight(base, "/"), http: &http.Client{Timeout: 120 * time.Second}}
+	// Three minutes: the installation gives a vision model two for one picture, and a call that waited
+	// exactly as long as the model would look like a broken module (23.11.2026). Every other call
+	// carries its own, shorter deadline.
+	return &installClient{base: strings.TrimRight(base, "/"), http: &http.Client{Timeout: 180 * time.Second}}
 }
 
 // call runs one command and answers with its result.

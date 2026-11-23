@@ -313,3 +313,35 @@ func TestSaveArticleRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestDescribeRefusals: describing a picture is a model call, so it needs the write right and a
+// document; and an installation that does not answer is named as such, not as an empty description
+// (23.11.2026).
+func TestDescribeRefusals(t *testing.T) {
+	install := newInstallClient("http://127.0.0.1:1")
+	a := &app{install: install, bucket: "галерея"}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	for _, tt := range []struct {
+		name   string
+		url    string
+		rights string
+		want   int
+	}{
+		{"a viewer", "/api/describe?doc=галерея%2Fi%2Fx.png", "read", http.StatusForbidden},
+		{"no document", "/api/describe", "write", http.StatusBadRequest},
+		{"installation is silent", "/api/describe?doc=галерея%2Fi%2Fx.png", "write", http.StatusBadGateway},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+tt.url, nil)
+		req.Header.Set("X-AnyText-Rights", tt.rights)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		res.Body.Close()
+		if res.StatusCode != tt.want {
+			t.Errorf("%s: answered %d, want %d", tt.name, res.StatusCode, tt.want)
+		}
+	}
+}

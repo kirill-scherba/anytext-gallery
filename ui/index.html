@@ -78,10 +78,13 @@
       <h2 id="metaTitle" data-i18n="metaTitle">Описание картинки</h2>
       <p class="muted" id="metaFile"></p>
 
-      <label class="field">
-        <span data-i18n="metaDescription">Описание</span>
+      <div class="field">
+        <div class="field-head">
+          <span data-i18n="metaDescription">Описание</span>
+          <button type="button" class="text small" id="metaDescribe" data-i18n="describeWithModel">Описать моделью</button>
+        </div>
         <textarea id="fDescription" rows="5"></textarea>
-      </label>
+      </div>
       <label class="field">
         <span data-i18n="metaTags">Теги (через запятую)</span>
         <input type="text" id="fTags" />

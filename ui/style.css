@@ -370,3 +370,9 @@ html.dark .hint { color: #4fd18b; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* The description field carries its own action: the model's words are a draft, and the button that
+   asks for them sits where the person reads them (23.11.2026). */
+.field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field-head .small { font-size: 12px; padding: 2px 8px; }
+.field-head .small.busy { opacity: 0.6; cursor: progress; }

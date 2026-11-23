@@ -59,6 +59,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/config", a.config)
 	mux.HandleFunc("GET /api/images", a.images)
 	mux.HandleFunc("GET /api/meta", a.meta)
+	mux.HandleFunc("POST /api/describe", a.describePicture)
 	mux.HandleFunc("POST /api/meta", a.saveMeta)
 	mux.HandleFunc("DELETE /api/meta", a.deleteMeta)
 	mux.HandleFunc("POST /api/migrate", a.migrate)
@@ -562,4 +563,42 @@ func mayWrite(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// describePicture asks the installation to describe a picture with its vision model — the same
+// command the window's «Описать моделью» button runs (doc.describe). The answer is put into the
+// editor's description field, not saved: a model's words are a draft a person reads first
+// (23.11.2026).
+func (a *app) describePicture(w http.ResponseWriter, r *http.Request) {
+	if !mayWrite(r) {
+		writeError(w, http.StatusForbidden, errors.New("эта роль не позволяет описывать картинки"))
+		return
+	}
+	doc := strings.TrimSpace(r.URL.Query().Get("doc"))
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errNoDoc)
+		return
+	}
+	// The installation gives a model two minutes for one picture; the request waits a little longer
+	// than that, or a slow model would look like a broken module.
+	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
+	defer cancel()
+	raw, err := a.install.call(ctx, "doc.describe", map[string]any{"bucket": a.bucket, "doc": doc})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	var answer struct {
+		Text  string `json:"text"`
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("ответ установки не разобран: %w", err))
+		return
+	}
+	if strings.TrimSpace(answer.Text) == "" {
+		writeError(w, http.StatusBadGateway, errors.New("модель не сказала ничего"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "text": answer.Text, "model": answer.Model})
 }
