@@ -19,7 +19,7 @@ import (
 )
 
 // version is the module's own version.
-const version = "0.5.14"
+const version = "0.5.18"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7860", "address to listen on (loopback only)")

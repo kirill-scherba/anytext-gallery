@@ -1016,7 +1016,24 @@ function applyTexts() {
 }
 
 function bind() {
-  $('refresh').addEventListener('click', () => { hideNotice(); search('') })
+  $('refresh').addEventListener('click', () => {
+    hideNotice()
+    // «Обновить» clears the search and reloads the grid; runSearch is the one that knows both tabs.
+    $('search').value = ''
+    runSearch('')
+    if (state.tab === 'articles') loadArticles('')
+    else loadPage(true)
+  })
+  // The toolbar behind one button on a phone; it folds back as soon as a choice is made.
+  const topbar = document.querySelector('.topbar')
+  const foldToolbar = () => topbar.classList.remove('more-open')
+  $('moreToggle').addEventListener('click', () => topbar.classList.toggle('more-open'))
+  $('mode').addEventListener('change', foldToolbar)
+  $('sort').addEventListener('change', foldToolbar)
+  $('refresh').addEventListener('click', () => setTimeout(foldToolbar, 300))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && topbar.classList.contains('more-open')) foldToolbar()
+  })
 
   try {
     const storedMode = localStorage.getItem('anytextGallery.mode')

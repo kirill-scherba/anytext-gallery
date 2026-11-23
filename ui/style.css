@@ -439,9 +439,22 @@ html.dark .hint { color: #4fd18b; }
 /* The toolbar used to insist on one line and made the whole page 544 px wide on a 390 px screen:
    the layout viewport grew, and the viewer's right arrow sat outside the screen (24.11.2026). */
 @media (max-width: 640px) {
-  .topbar { gap: 8px; padding: 8px; }
-  .actions { flex-wrap: wrap; width: 100%; margin-left: 0; }
-  .actions .search { flex: 1 1 140px; min-width: 0; }
+  /* One row for the page, and the toolbar behind «⋯» on a row of its own: mode, order, search and
+     refresh cost two rows of a small screen otherwise, and a person uses them twice a session
+     (23.11.2026). */
+  .topbar { gap: 6px; padding: 6px 8px; flex-wrap: wrap; }
+  .title { order: 1; }
+  .title .name { display: none; }
+  .tabs { order: 2; margin-left: 0; }
+  .actions { order: 4; display: none; flex-basis: 100%; flex-wrap: wrap; width: 100%; margin-left: 0; gap: 6px; }
+  .topbar.more-open .actions { display: flex; }
+  .actions .sort { flex: 1 1 calc(50% - 3px); min-width: 0; }
+  .actions .search { flex: 1 1 100%; min-width: 0; }
+  .actions #refresh { flex: 0 0 auto; margin-left: auto; }
+  /* Two classes on purpose: the base rule «не показывать» sits at the end of the file, and a later
+     rule of equal weight would win over the media query (23.11.2026). */
+  .topbar .mobile-only { order: 3; display: inline-flex; margin-left: auto; font-size: 18px; line-height: 1; padding: 4px 10px; }
+
   .viewer { padding: 8px; gap: 0; background: rgba(0, 0, 0, 0.96); }
   .viewer figure { max-width: 100%; }
   .viewer img { max-width: 100%; max-height: 72vh; }
@@ -493,3 +506,6 @@ html.dark .hint { color: #4fd18b; }
   cursor: pointer;
 }
 .viewer figcaption #viewerStory:hover { color: var(--heading); }
+
+/* The button that opens the toolbar on a phone is a phone-only thing. */
+.mobile-only { display: none; }
