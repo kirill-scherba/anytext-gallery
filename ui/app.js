@@ -472,6 +472,16 @@ function renderCards(items) {
     card.innerHTML = `<div class="thumb"><span class="ph">${esc(shortName(item.name))}</span></div>` +
       cardInfoHTML(item)
     card._item = item
+    // The pencil on the picture itself: the dense grid hides the caption with its buttons, and a
+    // person must not have to switch the grid to rename a picture (23.11.2026).
+    const pencil = document.createElement('button')
+    pencil.type = 'button'
+    pencil.className = 'card-edit'
+    pencil.title = t('edit')
+    pencil.setAttribute('aria-label', t('edit'))
+    pencil.textContent = '✎'
+    pencil.addEventListener('click', (event) => { event.stopPropagation(); openMeta(item) })
+    card.appendChild(pencil)
     const thumb = card.querySelector('.thumb')
     thumb.addEventListener('click', () => openViewer(item))
     bindCardInfo(card, item)

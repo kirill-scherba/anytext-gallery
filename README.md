@@ -43,6 +43,7 @@ curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
 | grid | the pictures of the collection's **root folder** — not the copies in `pub/`, not the trash, not a subfolder |
 | previews | the installation's `/api/thumb` — its own cache, memory and disk — and the **browser cache of the window itself**: the module reads and fills the same IndexedDB (`anytext-pictures`, key `collection/document@size`, 200 MB, seven days) that anytext-gui keeps, so a picture seen in the window opens in the gallery at once and the other way round. A chapter and the viewer ask for a 1400 px preview, not the original; the viewer carries an «оригинал» link |
 | viewer | the picture itself (`/api/file`), its name, arrows and `←`/`→`, `Esc` closes; under the name — **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
+| the pencil | in the dense grid the caption is hidden, so the picture carries a pencil in its corner: hover on a computer, always on a touch screen |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search (pictures) | by file name, folder, description and tags — every word of the query must be found; instant, no model involved |
 | search (chapters) | the title, the author, the date and the whole text of the chapter; the result carries the line the query was found in, without markdown |

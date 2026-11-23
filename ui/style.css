@@ -405,3 +405,55 @@ html.dark .hint { color: #4fd18b; }
    want to open or download (23.11.2026). */
 .viewer figcaption .original { margin-left: 10px; font-size: 12px; color: var(--muted); }
 .viewer figcaption .original:hover { color: var(--accent); }
+
+/* The pencil on a picture: the dense grid has no caption with its buttons, so the way to the editor
+   sits on the picture itself and appears when the mouse is over it. On a touch screen there is no
+   hover, so it is simply always there (23.11.2026). */
+.card-edit {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cards.mode-compact .card:hover .card-edit,
+.cards.mode-compact .card:focus-within .card-edit { display: flex; }
+@media (hover: none) {
+  .cards.mode-compact .card-edit { display: flex; opacity: 0.85; }
+}
+
+/* --- a phone ---------------------------------------------------------------------------------- */
+
+/* The toolbar used to insist on one line and made the whole page 544 px wide on a 390 px screen:
+   the layout viewport grew, and the viewer's right arrow sat outside the screen (24.11.2026). */
+@media (max-width: 640px) {
+  .topbar { gap: 8px; padding: 8px; }
+  .actions { flex-wrap: wrap; width: 100%; margin-left: 0; }
+  .actions .search { flex: 1 1 140px; min-width: 0; }
+  .viewer { padding: 8px; gap: 0; background: rgba(0, 0, 0, 0.96); }
+  .viewer figure { max-width: 100%; }
+  .viewer img { max-width: 100%; max-height: 72vh; }
+  .viewer-nav {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 56px;
+    z-index: 2;
+  }
+  .viewer-nav.prev { left: 6px; right: auto; }
+  .viewer-nav.next { right: 6px; left: auto; }
+  .viewer-edges { font-size: 12px; max-height: 22vh; overflow-y: auto; }
+}
