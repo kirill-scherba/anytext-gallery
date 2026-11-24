@@ -78,6 +78,11 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/search", a.semanticSearch)
 	mux.HandleFunc("GET /api/article", a.article)
 	mux.HandleFunc("POST /api/article", a.saveArticle)
+	// Publication of an article: the buttons live here, in the article, because that is where a
+	// person reads and decides. The state itself belongs to the document in the installation.
+	mux.HandleFunc("GET /api/publish", a.publishArticle)
+	mux.HandleFunc("POST /api/publish", a.publishArticle)
+	mux.HandleFunc("DELETE /api/publish", a.publishArticle)
 	// The screen is one document: its styles and its script come inside it (ui.go explains why).
 	mux.HandleFunc("GET /ui/", a.page)
 	return mux
@@ -865,4 +870,48 @@ func (a *app) signedMedia(w http.ResponseWriter, r *http.Request) {
 // and a detour through the relay there would only be slower (23.11.2026).
 func wantsMedia(r *http.Request) bool {
 	return r.URL.Query().Get("media") == "1" || r.Header.Get("X-AnyText-Relay") != ""
+}
+
+// publishArticle is the publication of one article: what the installation knows about it (GET),
+// publishing it (POST), taking it down (DELETE). The module keeps no state of its own: the address,
+// the date and the checksum of what went out live with the document, and the window that shows the
+// article asks the same question (24.11.2026).
+func (a *app) publishArticle(w http.ResponseWriter, r *http.Request) {
+	doc := strings.TrimSpace(r.URL.Query().Get("doc"))
+	if doc == "" {
+		writeError(w, http.StatusBadRequest, errors.New("нужен документ (doc)"))
+		return
+	}
+	// An article lives in the articles collection, not in the pictures one: the two are different
+	// collections of the same installation, and asking the wrong one answers "not published" about
+	// a chapter that is online (24.11.2026).
+	bucket := a.bucket
+	if a.articles != nil && a.articles.bucket != "" {
+		bucket = a.articles.bucket
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+	defer cancel()
+
+	var (
+		raw json.RawMessage
+		err error
+	)
+	switch r.Method {
+	case http.MethodGet:
+		raw, err = a.install.call(ctx, "doc.publication", map[string]any{"bucket": bucket, "doc": doc})
+	case http.MethodPost:
+		raw, err = a.install.call(ctx, "doc.publish", map[string]any{"bucket": bucket, "doc": doc})
+	case http.MethodDelete:
+		raw, err = a.install.call(ctx, "doc.unpublish", map[string]any{"bucket": bucket, "doc": doc})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, errors.New("GET, POST or DELETE"))
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(raw)
 }

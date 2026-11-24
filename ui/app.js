@@ -56,6 +56,13 @@ const STRINGS = {
     edgesError: 'связи не получены',
     articleHint: 'Markdown сохраняется в файл главы как есть; картинку достаточно указать именем файла: ![подпись](img_123.png).',
     articleSaved: 'Глава сохранена',
+    publish: 'Опубликовать',
+    published: 'Опубликовано',
+    publishedChanged: 'Опубликовано · изменилось',
+    unpublish: 'снять',
+    publishConfirm: 'Опубликовать статью наружу?\n\nТекст уйдёт на страницу, картинки станут публичными по ссылке.',
+    unpublishConfirm: 'Снять с публикации? Картинки будут удалены из хранилища, а страница останется с пометкой «снята»: удалить её у Telegraph нельзя.',
+    publishedHint: 'Статья опубликована: {url}',
     articlesError: 'Статьи не пришли',
     savedToMemory: 'Сохранено',
     savedPartial: 'Сохранено в память, но не в установку:', articlesSoon: 'Статьи — следующий шаг',
@@ -93,6 +100,13 @@ const STRINGS = {
     edgesError: 'connections did not come',
     articleHint: 'The markdown is saved into the chapter file as is; a picture is named by its file: ![alt](img_123.png).',
     articleSaved: 'The chapter is saved',
+    publish: 'Publish',
+    published: 'Published',
+    publishedChanged: 'Published · changed',
+    unpublish: 'take down',
+    publishConfirm: 'Publish this article outside?\n\nThe text goes to a page, the pictures become public by their address.',
+    unpublishConfirm: 'Take it down? The pictures are removed from storage; the page stays, marked as taken down - Telegraph cannot delete it.',
+    publishedHint: 'The article is published: {url}',
     articlesError: 'The articles did not arrive',
     savedToMemory: 'Saved',
     savedPartial: 'Saved in the memory, but not in the installation:', articlesSoon: 'Articles are the next step',
@@ -910,6 +924,65 @@ async function deleteMeta() {
   }
 }
 
+/** publication asks the installation where this article stands and paints the buttons:
+ *  "Опубликовать" when it is not published, "Опубликовано · изменилось" when the file was edited
+ *  after publishing, and "снять" while it is up. The state is the document's, not ours. */
+async function refreshPublication(doc) {
+  const publish = $('storyPublish')
+  const published = $('storyPublished')
+  const unpublish = $('storyUnpublish')
+  published.hidden = true
+  unpublish.hidden = true
+  if (!doc) {
+    publish.hidden = true
+    return
+  }
+  publish.hidden = false
+  publish.textContent = t('publish')
+  try {
+    const pub = await api('api/publish?doc=' + encodeURIComponent(doc))
+    if (pub && pub.published && !pub.removed) {
+      publish.hidden = true
+      published.hidden = false
+      published.href = pub.url
+      published.title = t('publishedHint', { url: pub.url })
+      published.querySelector('span').textContent = pub.changed ? t('publishedChanged') : t('published')
+      unpublish.hidden = false
+    }
+  } catch {
+    // A collection that is not publishable, or an installation without the command: no buttons
+    // is a better answer than a button that cannot work.
+    publish.hidden = true
+  }
+}
+
+async function publishArticle() {
+  if (!editingArticle || !editingArticle.doc) return
+  if (!window.confirm(t('publishConfirm'))) return
+  const publish = $('storyPublish')
+  publish.disabled = true
+  publish.textContent = '…'
+  try {
+    await api('api/publish?doc=' + encodeURIComponent(editingArticle.doc), { method: 'POST' })
+    await refreshPublication(editingArticle.doc)
+  } catch (e) {
+    showNotice(e.message || String(e))
+  } finally {
+    publish.disabled = false
+  }
+}
+
+async function unpublishArticle() {
+  if (!editingArticle || !editingArticle.doc) return
+  if (!window.confirm(t('unpublishConfirm'))) return
+  try {
+    await api('api/publish?doc=' + encodeURIComponent(editingArticle.doc), { method: 'DELETE' })
+    await refreshPublication(editingArticle.doc)
+  } catch (e) {
+    showNotice(e.message || String(e))
+  }
+}
+
 /** openArticleEditor shows the markdown of the chapter, as the file holds it. */
 function openArticleEditor() {
   if (!editingArticle) return
@@ -1103,6 +1176,8 @@ function bind() {
   $('storyBack').addEventListener('click', closeArticle)
   if (document.body.dataset.write === 'false') $('storyEdit').hidden = true
   $('storyEdit').addEventListener('click', openArticleEditor)
+  $('storyPublish').addEventListener('click', publishArticle)
+  $('storyUnpublish').addEventListener('click', unpublishArticle)
   $('articleForm').addEventListener('submit', saveArticleEditor)
   $('articleCancel').addEventListener('click', () => $('articleEditor').close())
 
@@ -1297,6 +1372,7 @@ async function openArticle(name) {
     const date = formatDate(page.date)
     $('storyMeta').textContent = [date, page.place].filter(Boolean).join(' · ')
     editingArticle = page
+    refreshPublication(page.doc)
     $('storyBody').innerHTML = page.html || ''
     const docs = page.docs || {}
     for (const img of $('storyBody').querySelectorAll('img[data-gallery]')) {
