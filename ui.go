@@ -39,7 +39,7 @@ func (a *app) page(w http.ResponseWriter, r *http.Request) {
 		// not find out from a refusal (22.11.2026).
 		"CanWrite": mayWrite(r),
 		"Person":   r.Header.Get("X-AnyText-Person"),
-		"Bucket":   a.bucket,
+		"Bucket":   a.mainBucket(),
 		"Version":  version,
 		"Style":    pageStyle,
 		"Script":   pageScript,

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,32 +27,115 @@ import (
 type app struct {
 	install *installClient
 	memory  *memoryClient
-	bucket  string
+	// bucket is the first collection of pictures: the one a request that names no document belongs
+	// to. Pictures themselves always carry their own collection (26.11.2026).
+	bucket string
 	// publicBase is the address the public copies are served at (the old gallery's /i/pub/).
 	publicBase string
 	// articles is the reader of the long-form collection (the memoirs), when one is configured.
 	articles *articlesReader
 
-	// root is the folder of the collection, read once: a gallery page must not ask the installation
-	// for the collection list on every scroll step.
-	root   string
-	rootAt time.Time
+	// roots are the folders of the collections, read once each: a gallery page must not ask the
+	// installation for the collection list on every scroll step.
+	roots map[string]rootEntry
 
 	// edges is what the memory graph said about the pictures seen recently.
 	edges *edgesCache
 	// mediaCache is the relay's permit for picture addresses, kept until it nearly ends.
 	mediaCache *mediaCache
+
+	// mu guards the settings that a person may change while the module runs.
+	mu sync.RWMutex
+	// sets is what the owner chose: the pictures collections, the articles collection, the public
+	// address. The flags are only the defaults until the window says otherwise.
+	sets     settings
+	setsPath string
 }
 
-// rootFolder answers the collection's folder, remembered for a minute.
-func (a *app) rootFolder(ctx context.Context) string {
-	if a.root != "" && time.Since(a.rootAt) < time.Minute {
-		return a.root
+// rootFolder answers the collection's folder, remembered for a minute. Every collection has its own:
+// the grid may show several at once, and the folder of one is not the folder of another.
+func (a *app) rootFolder(ctx context.Context, bucket string) string {
+	if bucket == "" {
+		bucket = a.mainBucket()
 	}
-	if root, err := a.install.BucketRoot(ctx, a.bucket); err == nil {
-		a.root, a.rootAt = root, time.Now()
+	a.mu.RLock()
+	if a.roots == nil {
+		a.mu.RUnlock()
+		a.mu.Lock()
+		if a.roots == nil {
+			a.roots = map[string]rootEntry{}
+		}
+		a.mu.Unlock()
+		a.mu.RLock()
 	}
-	return a.root
+	if e, ok := a.roots[bucket]; ok && time.Since(e.at) < time.Minute {
+		a.mu.RUnlock()
+		return e.root
+	}
+	a.mu.RUnlock()
+	root, err := a.install.BucketRoot(ctx, bucket)
+	if err != nil {
+		return ""
+	}
+	a.mu.Lock()
+	a.roots[bucket] = rootEntry{root: root, at: time.Now()}
+	a.mu.Unlock()
+	return root
+}
+
+// rootEntry is one collection's folder and when it was read.
+type rootEntry struct {
+	root string
+	at   time.Time
+}
+
+// mainBucket is the first collection of pictures: the default for requests that name no document.
+func (a *app) mainBucket() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if len(a.sets.Pictures) > 0 {
+		return a.sets.Pictures[0]
+	}
+	return a.bucket
+}
+
+// pictureBuckets answers every collection the grid shows.
+func (a *app) pictureBuckets() []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if len(a.sets.Pictures) > 0 {
+		return append([]string{}, a.sets.Pictures...)
+	}
+	if a.bucket != "" {
+		return []string{a.bucket}
+	}
+	return nil
+}
+
+// articlesBucket answers the collection of chapters, if one is configured.
+func (a *app) articlesBucket() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.sets.Articles
+}
+
+// publicBaseNow is the address public copies are served at.
+func (a *app) publicBaseNow() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.sets.PublicBase != "" {
+		return a.sets.PublicBase
+	}
+	return a.publicBase
+}
+
+// bucketOf reads the collection out of a document key: a key starts with its collection, and a picture
+// of the second collection must be described, published and thrown away in the second one.
+func (a *app) bucketOf(doc string) string {
+	if i := strings.Index(doc, "/"); i > 0 {
+		return doc[:i]
+	}
+	return a.mainBucket()
 }
 
 // routes is the whole surface of the module.
@@ -62,6 +146,8 @@ func (a *app) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /api/status", a.status)
 	mux.HandleFunc("GET /api/config", a.config)
+	mux.HandleFunc("GET /api/settings", a.settingsGet)
+	mux.HandleFunc("POST /api/settings", a.settingsPost)
 	mux.HandleFunc("GET /api/images", a.images)
 	mux.HandleFunc("GET /api/meta", a.meta)
 	mux.HandleFunc("POST /api/describe", a.describePicture)
@@ -94,8 +180,9 @@ var errNoDoc = errors.New("нужен документ (doc)")
 // config tells the screen which collection it works with.
 func (a *app) config(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"bucket":   a.bucket,
-		"articles": "",
+		"bucket":   a.mainBucket(),
+		"buckets":  a.pictureBuckets(),
+		"articles": a.articlesBucket(),
 		"version":  version,
 	})
 }
@@ -105,12 +192,14 @@ func (a *app) config(w http.ResponseWriter, r *http.Request) {
 func (a *app) status(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	pics, err := a.pictures(ctx)
 	answer := map[string]any{
-		"version": version,
-		"install": a.install.base,
-		"bucket":  a.bucket,
-		"ready":   err == nil,
+		"version":  version,
+		"install":  a.install.base,
+		"bucket":   a.mainBucket(),
+		"buckets":  a.pictureBuckets(),
+		"articles": a.articlesBucket(),
+		"ready":    err == nil,
 	}
 	if err == nil {
 		answer["pictures"] = len(pics)
@@ -142,9 +231,23 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+	pics := []Picture{}
+	problems := []string{}
+	for _, bucket := range a.pictureBuckets() {
+		found, err := a.install.Pictures(ctx, bucket, a.rootFolder(ctx, bucket))
+		if err != nil {
+			// One unreadable collection must not hide the others: the grid says which one failed and
+			// keeps showing what it has (26.11.2026).
+			problems = append(problems, bucket+": "+err.Error())
+			continue
+		}
+		for i := range found {
+			found[i].Bucket = bucket
+		}
+		pics = append(pics, found...)
+	}
+	if len(problems) > 0 && len(pics) == 0 {
+		writeError(w, http.StatusBadGateway, errors.New(strings.Join(problems, "; ")))
 		return
 	}
 	// The words about the pictures are loaded before the filter: a search looks into the description
@@ -172,11 +275,12 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 	}
 	page := pics[offset:end]
 	answer := map[string]any{
-		"bucket": a.bucket,
-		"total":  total,
-		"offset": offset,
-		"limit":  limit,
-		"items":  page,
+		"bucket":  a.mainBucket(),
+		"buckets": a.pictureBuckets(),
+		"total":   total,
+		"offset":  offset,
+		"limit":   limit,
+		"items":   page,
 	}
 	// A relayed installation serves pictures only with a media permit, and the browser cannot put a
 	// header on an <img src>: the permit travels with the page (23.11.2026).
@@ -255,7 +359,7 @@ func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
 	// an empty one.
 	if strings.TrimSpace(meta.Description) != "" {
 		_, err := a.install.call(ctx, "doc.save_description", map[string]any{
-			"bucket": a.bucket, "doc": doc, "text": meta.Description, "model": "gallery",
+			"bucket": a.bucketOf(doc), "doc": doc, "text": meta.Description, "model": "gallery",
 		})
 		if err != nil {
 			answer["index"] = err.Error()
@@ -263,7 +367,7 @@ func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
 			answer["index"] = "ok"
 		}
 	} else {
-		if _, err := a.install.call(ctx, "doc.drop_description", map[string]any{"bucket": a.bucket, "doc": doc}); err != nil {
+		if _, err := a.install.call(ctx, "doc.drop_description", map[string]any{"bucket": a.bucketOf(doc), "doc": doc}); err != nil {
 			answer["index"] = err.Error()
 		} else {
 			answer["index"] = "удалено"
@@ -311,7 +415,7 @@ func (a *app) migrate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	docs, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	docs, err := a.pictures(ctx)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -335,7 +439,7 @@ func (a *app) migrate(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if _, err := a.install.call(ctx, "doc.save_description", map[string]any{
-			"bucket": a.bucket, "doc": doc, "text": meta.Description, "model": "gallery",
+			"bucket": a.bucketOf(doc), "doc": doc, "text": meta.Description, "model": "gallery",
 		}); err != nil {
 			failed++
 			if len(problems) < 10 {
@@ -399,7 +503,7 @@ func (a *app) trash(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	if _, err := a.install.call(ctx, "doc.delete", map[string]any{
-		"bucket": a.bucket, "doc": doc, "delete_file": false,
+		"bucket": a.bucketOf(doc), "doc": doc, "delete_file": false,
 	}); err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -414,12 +518,14 @@ func (a *app) picture(doc string) (Picture, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	bucket := a.bucketOf(doc)
+	pics, err := a.install.Pictures(ctx, bucket, a.rootFolder(ctx, bucket))
 	if err != nil {
 		return Picture{}, err
 	}
 	for _, p := range pics {
 		if p.Doc == doc {
+			p.Bucket = bucket
 			return p, nil
 		}
 	}
@@ -428,15 +534,20 @@ func (a *app) picture(doc string) (Picture, error) {
 
 // publicURL is the address a person can give to somebody else.
 func (a *app) publicURL(p Picture) string {
-	if !IsPublic(p) || a.publicBase == "" {
+	if !IsPublic(p) || a.publicBaseNow() == "" {
 		return ""
 	}
-	return strings.TrimRight(a.publicBase, "/") + "/" + p.Name
+	return strings.TrimRight(a.publicBaseNow(), "/") + "/" + p.Name
+}
+
+// hasArticles says whether the module has a long-form collection at all.
+func (a *app) hasArticles() bool {
+	return a.articles != nil && a.articlesBucket() != ""
 }
 
 // articlesList is the table of contents: the chapters, newest first.
 func (a *app) articlesList(w http.ResponseWriter, r *http.Request) {
-	if a.articles == nil {
+	if !a.hasArticles() {
 		writeJSON(w, http.StatusOK, map[string]any{"articles": []Article{}, "note": "коллекция статей не настроена"})
 		return
 	}
@@ -458,15 +569,15 @@ func (a *app) articlesList(w http.ResponseWriter, r *http.Request) {
 				found = append(found, article)
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articles.bucket, "articles": found, "query": query})
+		writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articlesBucket(), "articles": found, "query": query})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articles.bucket, "articles": list})
+	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.articlesBucket(), "articles": list})
 }
 
 // article answers one chapter as a page.
 func (a *app) article(w http.ResponseWriter, r *http.Request) {
-	if a.articles == nil {
+	if !a.hasArticles() {
 		writeError(w, http.StatusNotFound, errNoArticles)
 		return
 	}
@@ -484,7 +595,7 @@ func (a *app) article(w http.ResponseWriter, r *http.Request) {
 	}
 	// The screen resolves a picture of the article to its document key, so the article's pictures use
 	// the same viewer as the grid.
-	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	pics, err := a.pictures(ctx)
 	if err == nil {
 		byName := map[string]string{}
 		for _, p := range pics {
@@ -522,7 +633,7 @@ func (a *app) saveArticle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, errors.New("эта роль не позволяет править статьи"))
 		return
 	}
-	if a.articles == nil {
+	if !a.hasArticles() {
 		writeError(w, http.StatusNotFound, errNoArticles)
 		return
 	}
@@ -565,7 +676,7 @@ func (a *app) saveArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := a.install.call(ctx, "doc.save_raw", map[string]any{
-		"bucket": a.articles.bucket, "doc": doc, "text": in.Text,
+		"bucket": a.articlesBucket(), "doc": doc, "text": in.Text,
 	}); err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -607,7 +718,7 @@ func (a *app) describePicture(w http.ResponseWriter, r *http.Request) {
 	// than that, or a slow model would look like a broken module.
 	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
 	defer cancel()
-	raw, err := a.install.call(ctx, "doc.describe", map[string]any{"bucket": a.bucket, "doc": doc})
+	raw, err := a.install.call(ctx, "doc.describe", map[string]any{"bucket": a.bucketOf(doc), "doc": doc})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -730,11 +841,11 @@ func (a *app) semanticSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	bucket := a.bucket
 	if in == "articles" {
-		if a.articles == nil {
+		if !a.hasArticles() {
 			writeError(w, http.StatusNotFound, errNoArticles)
 			return
 		}
-		bucket = a.articles.bucket
+		bucket = a.articlesBucket()
 	}
 	// The meaning search embeds the query and walks the vectors: a second and a half on this machine.
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
@@ -775,7 +886,7 @@ func (a *app) semanticSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pics, err := a.install.Pictures(ctx, a.bucket, a.rootFolder(ctx))
+	pics, err := a.pictures(ctx)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -885,9 +996,9 @@ func (a *app) publishArticle(w http.ResponseWriter, r *http.Request) {
 	// An article lives in the articles collection, not in the pictures one: the two are different
 	// collections of the same installation, and asking the wrong one answers "not published" about
 	// a chapter that is online (24.11.2026).
-	bucket := a.bucket
-	if a.articles != nil && a.articles.bucket != "" {
-		bucket = a.articles.bucket
+	bucket := a.bucketOf(doc)
+	if b := a.articlesBucket(); b != "" && strings.HasPrefix(doc, b+"/") {
+		bucket = b
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 	defer cancel()
@@ -914,4 +1025,127 @@ func (a *app) publishArticle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(raw)
+}
+
+// pictures answers the pictures of every chosen collection, each knowing where it came from. The flag
+// "-bucket" is one collection, but a person may have several: generated pictures, screenshots,
+// photographs, and the grid is the one place where they belong together (26.11.2026).
+func (a *app) pictures(ctx context.Context) ([]Picture, error) {
+	out := []Picture{}
+	problems := []string{}
+	for _, bucket := range a.pictureBuckets() {
+		found, err := a.install.Pictures(ctx, bucket, a.rootFolder(ctx, bucket))
+		if err != nil {
+			problems = append(problems, bucket+": "+err.Error())
+			continue
+		}
+		for i := range found {
+			found[i].Bucket = bucket
+		}
+		out = append(out, found...)
+	}
+	if len(out) == 0 && len(problems) > 0 {
+		return nil, errors.New(strings.Join(problems, "; "))
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- settings
+
+// settingsAnswer is what the window needs to draw the form: the values in force and every collection
+// of the installation with its folders, so a person chooses from a list instead of typing a name.
+type settingsAnswer struct {
+	Pictures     []string     `json:"pictures"`
+	Articles     string       `json:"articles"`
+	PublicBase   string       `json:"public_base"`
+	Collections  []Collection `json:"collections"`
+	SettingsFile string       `json:"settings_file,omitempty"`
+}
+
+// settingsGet answers the current settings and the collections of the installation.
+func (a *app) settingsGet(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	answer := settingsAnswer{
+		Pictures:     a.pictureBuckets(),
+		Articles:     a.articlesBucket(),
+		PublicBase:   a.publicBaseNow(),
+		SettingsFile: a.setsPath,
+	}
+	if cols, err := a.install.Collections(ctx); err == nil {
+		answer.Collections = cols
+	}
+	writeJSON(w, http.StatusOK, answer)
+}
+
+// settingsPost saves the choice: which collections of pictures the grid shows, which collection holds
+// the chapters, and where the public copies live. It is applied at once — the screen reloads the grid
+// and the articles reader starts reading the new collection (26.11.2026).
+func (a *app) settingsPost(w http.ResponseWriter, r *http.Request) {
+	if !mayWrite(r) {
+		writeError(w, http.StatusForbidden, errors.New("эта роль не позволяет менять настройки"))
+		return
+	}
+	var in settings
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("тело запроса не разобрано: %w", err))
+		return
+	}
+	in = in.clean()
+	if err := in.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	cols, err := a.install.Collections(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	known := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		known[c.ID] = true
+	}
+	for _, name := range in.Pictures {
+		if !known[name] {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("нет коллекции «%s»", name))
+			return
+		}
+	}
+	if in.Articles != "" {
+		if !known[in.Articles] {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("нет коллекции «%s»", in.Articles))
+			return
+		}
+		// A collection of pictures as the warehouse of chapters would leave an empty tab with no word
+		// about why: check for a chapter before saving.
+		has, err := a.install.HasMarkdown(ctx, in.Articles)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		if !has {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("в коллекции «%s» нет ни одной статьи (.md)", in.Articles))
+			return
+		}
+	}
+
+	if err := saveSettings(a.setsPath, in); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	a.mu.Lock()
+	a.sets = in
+	a.bucket = in.Pictures[0]
+	a.roots = map[string]rootEntry{}
+	a.mu.Unlock()
+	a.edges = newEdgesCache()
+	a.mediaCache = nil
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"pictures": a.pictureBuckets(), "articles": a.articlesBucket(), "public_base": a.publicBaseNow(),
+		"saved": true,
+	})
 }

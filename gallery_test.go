@@ -286,7 +286,11 @@ func TestWriteRightDecidesTheButton(t *testing.T) {
 // and a save by a person whose rights do not include writing.
 func TestSaveArticleRefusals(t *testing.T) {
 	install := newInstallClient("http://127.0.0.1:1")
-	a := &app{install: install, bucket: "галерея", articles: newArticlesReader(install, "мемуары")}
+	a := &app{
+		install: install, bucket: "галерея",
+		sets:     settings{Pictures: []string{"галерея"}, Articles: "мемуары"},
+		articles: newArticlesReader(install, "мемуары"),
+	}
 	srv := httptest.NewServer(a.routes())
 	t.Cleanup(srv.Close)
 
@@ -479,5 +483,75 @@ func TestSearchNeedsAQuery(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("answered %d, want %d", res.StatusCode, http.StatusBadRequest)
+	}
+}
+
+// TestSettingsFileOverridesFlags: the flags are the defaults, the file the window writes is the
+// choice. A module that ignored the file would lose the collections on every restart (26.11.2026).
+func TestSettingsFileOverridesFlags(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.json"
+	want := settings{Pictures: []string{"галерея", " images ", "галерея"}, Articles: "мемуары", PublicBase: "https://bmat.uk/i/pub/"}
+	if err := saveSettings(path, want); err != nil {
+		t.Fatalf("saveSettings: %v", err)
+	}
+	got, ok := loadSettings(path)
+	if !ok {
+		t.Fatal("the file written a moment ago was not read")
+	}
+	if strings.Join(got.Pictures, ",") != "галерея,images" {
+		t.Errorf("pictures = %v, want the duplicates and spaces gone", got.Pictures)
+	}
+	if got.Articles != "мемуары" || got.PublicBase != "https://bmat.uk/i/pub" {
+		t.Errorf("settings = %+v", got)
+	}
+	if _, ok := loadSettings(dir + "/missing.json"); ok {
+		t.Error("a missing file was read as a choice")
+	}
+}
+
+// TestSettingsValidation: a gallery with no collection has nothing to show, and saying so before
+// saving is cheaper than an empty screen after a restart.
+func TestSettingsValidation(t *testing.T) {
+	if err := (settings{Pictures: []string{"  "}}).clean().validate(); err == nil {
+		t.Error("an empty choice was accepted")
+	}
+	if err := (settings{Pictures: []string{"галерея"}}).clean().validate(); err != nil {
+		t.Errorf("a valid choice was refused: %v", err)
+	}
+}
+
+// TestSettingsNeedsTheWriteRight: settings are the owner's, and a viewer must not change what
+// everybody sees.
+func TestSettingsNeedsTheWriteRight(t *testing.T) {
+	a := &app{install: newInstallClient("http://127.0.0.1:1"), bucket: "галерея"}
+	srv := httptest.NewServer(a.routes())
+	t.Cleanup(srv.Close)
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/settings", strings.NewReader(`{"pictures":["галерея"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-AnyText-Rights", "read")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("a viewer's save answered %d, want %d", res.StatusCode, http.StatusForbidden)
+	}
+}
+
+// TestBucketOfDoc: a picture is described, published and thrown away in the collection its key
+// starts with, not in the first one of the settings.
+func TestBucketOfDoc(t *testing.T) {
+	a := &app{bucket: "галерея", sets: settings{Pictures: []string{"галерея", "images"}}}
+	for _, tt := range []struct{ doc, want string }{
+		{"images/i/x.png", "images"},
+		{"галерея/i/x.png", "галерея"},
+		{"plain.png", "галерея"}, // no collection in the key: the first one
+	} {
+		if got := a.bucketOf(tt.doc); got != tt.want {
+			t.Errorf("bucketOf(%q) = %q, want %q", tt.doc, got, tt.want)
+		}
 	}
 }

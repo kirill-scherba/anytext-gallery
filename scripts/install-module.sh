@@ -217,7 +217,10 @@ echo "version $VERSION · collections: pictures «$BUCKET», articles «${ARTICL
 case "$ACTION" in
   build) build ;;
   install)
-    [ -f "$OUT" ] || build
+    # Always rebuild: a binary left in dist/ by an earlier version is stale, and copying it over the
+    # installed one is how the installation ends up running yesterday's code with today's registry
+    # entry (26.11.2026).
+    build
     if [ -n "$REMOTE" ]; then installRemote; else installLocal; fi
     ;;
   publish) build; publish ;;

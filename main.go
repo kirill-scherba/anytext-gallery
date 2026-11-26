@@ -19,7 +19,7 @@ import (
 )
 
 // version is the module's own version.
-const version = "0.5.19"
+const version = "0.6.1"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7860", "address to listen on (loopback only)")
@@ -44,16 +44,43 @@ func main() {
 		proxy = "http://127.0.0.1:7711"
 	}
 	installation := newInstallClient(self)
+	// The flags are the defaults; the file the window writes overrides them, so a person changes the
+	// collections without a reinstall and without a restart (26.11.2026).
+	defaults := settings{
+		Pictures:   []string{strings.TrimSpace(*bucket)},
+		Articles:   strings.TrimSpace(*articles),
+		PublicBase: strings.TrimSpace(*publicBase),
+	}.clean()
+	sets, fromFile := loadSettings(settingsPath())
+	if !fromFile {
+		sets = defaults
+	}
 	a := &app{
 		install:    installation,
 		memory:     newMemoryClient(proxy, "memory-store-mcp"),
-		bucket:     strings.TrimSpace(*bucket),
+		bucket:     firstOr(sets.Pictures, strings.TrimSpace(*bucket)),
 		publicBase: strings.TrimSpace(*publicBase),
+		sets:       sets,
+		setsPath:   settingsPath(),
 	}
-	if strings.TrimSpace(*articles) != "" {
-		a.articles = newArticlesReader(installation, strings.TrimSpace(*articles))
+	// The reader follows the settings: choosing another collection of chapters takes effect without a
+	// restart, because the reader asks for the collection on every read.
+	a.articles = newArticlesReaderDynamic(installation, a.articlesBucket)
+	source := "flags"
+	if fromFile {
+		source = "file " + a.setsPath
 	}
-	log.Printf("anytext-gallery %s: %s, installation %s, collection %q, articles %q",
-		version, *addr, self, a.bucket, strings.TrimSpace(*articles))
+	log.Printf("anytext-gallery %s: %s, installation %s, pictures %v, articles %q (%s)",
+		version, *addr, self, sets.Pictures, sets.Articles, source)
 	log.Fatal(http.ListenAndServe(*addr, a.routes()))
+}
+
+// firstOr answers the first value that is not empty.
+func firstOr(values []string, fallback string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return fallback
 }

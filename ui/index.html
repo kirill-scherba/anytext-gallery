@@ -30,6 +30,7 @@
         <option value="new" data-i18n="sortNew">новые сверху</option>
         <option value="name" data-i18n="sortName">по имени</option>
       </select>
+      <button type="button" class="text" id="settingsBtn" data-i18n-title="settings" title="Настройки" hidden>⚙</button>
       <input type="search" id="search" class="search" data-i18n-placeholder="searchPlaceholder" placeholder="поиск по имени" />
       <button type="button" class="text" id="refresh" data-i18n="refresh">Обновить</button>
     </div>
@@ -122,6 +123,38 @@
         <span class="spacer"></span>
         <button type="button" class="text" id="metaCancel" data-i18n="cancel">Отмена</button>
         <button type="submit" class="text primary" id="metaSave" data-i18n="save">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings: which collections the grid shows and where the chapters live. -->
+  <dialog id="settings">
+    <form id="settingsForm" novalidate>
+      <h2 data-i18n="settings">Настройки</h2>
+      <p class="muted" data-i18n="settingsHint">Картинки — коллекции, которые показывает сетка. Статьи — коллекция, в которой лежат главы.</p>
+
+      <fieldset class="collections">
+        <legend data-i18n="picturesCollections">Коллекции картинок</legend>
+        <div id="settingsPictures"></div>
+      </fieldset>
+
+      <label class="field">
+        <span data-i18n="articlesCollection">Коллекция статей</span>
+        <select id="settingsArticles"></select>
+      </label>
+
+      <label class="field">
+        <span data-i18n="publicBase">Адрес публичных копий</span>
+        <input type="text" id="settingsPublicBase" placeholder="https://bmat.uk/i/pub" />
+      </label>
+
+      <p class="muted" id="settingsFile"></p>
+      <p class="error" id="settingsError" hidden></p>
+
+      <div class="buttons">
+        <span class="spacer"></span>
+        <button type="button" class="text" id="settingsCancel" data-i18n="cancel">Отмена</button>
+        <button type="submit" class="text primary" id="settingsSave" data-i18n="save">Сохранить</button>
       </div>
     </form>
   </dialog>

@@ -46,6 +46,14 @@ const STRINGS = {
     metaContext: 'Контекст', metaPrompt: 'Prompt генерации', metaMemoir: 'Рассказ (имя файла)',
     metaDelete: 'Удалить мету', cancel: 'Отмена', save: 'Сохранить',
     backToArticles: 'статьи', story: 'Рассказ', articlesEmpty: 'Статей пока нет', author: 'Автор', contents: 'Оглавление',
+    settings: 'Настройки',
+    settingsHint: 'Картинки — коллекции, которые показывает сетка. Статьи — коллекция, в которой лежат главы.',
+    picturesCollections: 'Коллекции картинок',
+    articlesCollection: 'Коллекция статей',
+    publicBase: 'Адрес публичных копий',
+    settingsSaved: 'Настройки сохранены',
+    noArticles: '— без статей —',
+    settingsFile: 'Файл настроек',
     editArticle: 'Редактировать',
     describeWithModel: 'Описать моделью',
     describeWaiting: 'Модель смотрит на картинку…',
@@ -90,6 +98,14 @@ const STRINGS = {
     metaContext: 'Context', metaPrompt: 'Generation prompt', metaMemoir: 'Story (file name)',
     metaDelete: 'Delete meta', cancel: 'Cancel', save: 'Save',
     backToArticles: 'articles', story: 'Story', articlesEmpty: 'No articles yet', author: 'Author', contents: 'Contents',
+    settings: 'Settings',
+    settingsHint: 'Pictures are the collections the grid shows. Articles are the collection the chapters live in.',
+    picturesCollections: 'Collections of pictures',
+    articlesCollection: 'Collection of articles',
+    publicBase: 'Address of public copies',
+    settingsSaved: 'Settings saved',
+    noArticles: '— no articles —',
+    settingsFile: 'Settings file',
     editArticle: 'Edit',
     describeWithModel: 'Describe with a model',
     describeWaiting: 'The model is looking at the picture…',
@@ -370,9 +386,16 @@ function withPermit(params) {
   return params
 }
 
+/** bucketOfDoc reads the collection out of a document key: a key starts with its collection, and the
+ *  grid may show several collections at once (26.11.2026). */
+function bucketOfDoc(doc) {
+  const i = String(doc || '').indexOf('/')
+  return i > 0 ? doc.slice(0, i) : state.bucket
+}
+
 /** thumbURL is the installation's preview of one picture. */
 function thumbURL(doc, max) {
-  const q = withPermit(new URLSearchParams({ bucket: state.bucket, doc, max: String(max) }))
+  const q = withPermit(new URLSearchParams({ bucket: bucketOfDoc(doc), doc, max: String(max) }))
   return `${mediaBase()}/api/thumb?${q.toString()}`
 }
 
@@ -420,7 +443,7 @@ function previewURL(doc, max) {
 
 /** fileURL is the picture itself, not compressed. */
 function fileURL(doc) {
-  const q = withPermit(new URLSearchParams({ bucket: state.bucket, doc }))
+  const q = withPermit(new URLSearchParams({ bucket: bucketOfDoc(doc), doc }))
   return `${mediaBase()}/api/file?${q.toString()}`
 }
 
@@ -1020,6 +1043,77 @@ async function saveArticleEditor(event) {
   }
 }
 
+// --- settings ----------------------------------------------------------------------------------
+
+/** openSettings draws the form from the module: the values in force and every collection of the
+ *  installation with the folders behind it, so a person chooses instead of typing a name. */
+async function openSettings() {
+  const box = $('settings')
+  $('settingsError').hidden = true
+  $('settingsSave').disabled = true
+  box.showModal()
+  try {
+    const answer = await api('api/settings')
+    const chosen = new Set(answer.pictures || [])
+    const collections = answer.collections || []
+    $('settingsPictures').innerHTML = collections.map((c) => `
+      <label class="collection-option">
+        <input type="checkbox" value="${esc(c.id)}" ${chosen.has(c.id) ? 'checked' : ''} />
+        <span class="collection-name">${esc(c.name || c.id)}</span>
+        <span class="collection-path">${esc((c.folders || []).join(', '))}</span>
+      </label>`).join('') || `<div class="empty">${esc(t('nothingFound'))}</div>`
+    const options = [`<option value="">${esc(t('noArticles'))}</option>`].concat(
+      collections.map((c) => `<option value="${esc(c.id)}" ${answer.articles === c.id ? 'selected' : ''}>${esc(c.name || c.id)}</option>`))
+    $('settingsArticles').innerHTML = options.join('')
+    $('settingsPublicBase').value = answer.public_base || ''
+    $('settingsFile').textContent = answer.settings_file ? `${t('settingsFile')}: ${answer.settings_file}` : ''
+  } catch (e) {
+    $('settingsError').textContent = e.message
+    $('settingsError').hidden = false
+  } finally {
+    $('settingsSave').disabled = false
+  }
+}
+
+/** saveSettings sends the choice and applies it: the grid and the articles start reading the new
+ *  collections at once, without a restart. */
+async function saveSettings(event) {
+  event.preventDefault()
+  const error = $('settingsError')
+  error.hidden = true
+  const pictures = [...$('settingsPictures').querySelectorAll('input[type=checkbox]')]
+    .filter((box) => box.checked).map((box) => box.value)
+  const body = {
+    pictures,
+    articles: $('settingsArticles').value,
+    public_base: $('settingsPublicBase').value.trim(),
+  }
+  const button = $('settingsSave')
+  button.disabled = true
+  try {
+    await api('api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    $('settings').close()
+    await loadConfig()
+    state.q = ''
+    $('search').value = ''
+    // A page may be on its way while the settings change: the grid must be rebuilt from the new
+    // collections, not left with the answer that was already travelling (26.11.2026).
+    state.loading = false
+    state.done = false
+    showTab('pictures')
+    await loadPage(true)
+  } catch (e) {
+    error.textContent = e.message
+    error.hidden = false
+  } finally {
+    button.disabled = false
+  }
+}
+
 // --- the bar -----------------------------------------------------------------------------------
 
 function updateCounter() {
@@ -1179,6 +1273,10 @@ function bind() {
   $('storyPublish').addEventListener('click', publishArticle)
   $('storyUnpublish').addEventListener('click', unpublishArticle)
   $('articleForm').addEventListener('submit', saveArticleEditor)
+  $('settingsBtn').addEventListener('click', openSettings)
+  $('settingsForm').addEventListener('submit', saveSettings)
+  $('settingsCancel').addEventListener('click', () => $('settings').close())
+  if (document.body.dataset.write !== 'false') $('settingsBtn').hidden = false
   $('articleCancel').addEventListener('click', () => $('articleEditor').close())
 
   window.addEventListener('storage', (event) => {

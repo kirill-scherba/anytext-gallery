@@ -57,6 +57,7 @@ and then `modules.install` with the command line.
 | previews | the installation's `/api/thumb` — its own cache, memory and disk — and the **browser cache of the window itself**: the module reads and fills the same IndexedDB (`anytext-pictures`, key `collection/document@size`, 200 MB, seven days) that anytext-gui keeps, so a picture seen in the window opens in the gallery at once and the other way round. A chapter and the viewer ask for a 1400 px preview, not the original; the viewer carries an «оригинал» link |
 | viewer | the picture itself (a 1400 px preview from the installation's cache), its name, arrows and `←`/`→`, `Esc` closes; under the name — «оригинал» (the full file), «Рассказ» (the chapter it is in, when it is in one) and **«Связи»**: the memory graph's relations of this picture, as the old gallery showed them |
 | the pencil | in the dense grid the caption is hidden, so the picture carries a pencil in its corner: hover on a computer, always on a touch screen |
+| settings | «⚙» in the header (a person with the write right): the collections of pictures the grid shows — several at once — the collection of chapters, and the address of the public copies. A person chooses from the installation's own list, with each collection's folders shown under it |
 | two grids | **dense** — pictures only; **cards** — the size and shape of the old gallery: preview, name, date, description, the editor button. The choice is remembered |
 | search (pictures) | by file name, folder, description and tags — every word of the query must be found; instant, no model involved |
 | search (chapters) | the title, the author, the date and the whole text of the chapter; the result carries the line the query was found in, without markdown |
@@ -94,14 +95,30 @@ files shows bare HTML through the relay (docs/MODULES.md in anytext-gui, item 4)
 A picture is `{doc, name, folder, vision, has_description}` — `doc` is the document key the picture
 endpoints expect.
 
+## Settings
+
+The flags are the defaults. What a person chooses in the window is kept in
+`~/.config/teonet/anytext-gallery/config.json` and overrides them:
+
+```json
+{ "pictures": ["галерея", "images"], "articles": "мемуары", "public_base": "https://bmat.uk/i/pub" }
+```
+
+- **pictures** — a list: a person may keep generated pictures, screenshots and photographs in different
+  collections, and the grid is the one place they belong together. A card of a second collection is
+  published, described and thrown away in that collection — the document key starts with its name.
+- **articles** — one collection, or empty for no articles tab. The module refuses a collection with no
+  `.md` in it before it saves, so an empty tab cannot appear without a word about why.
+- the choice is applied at once: the grid reloads, the articles reader starts reading the new collection.
+
 ## Flags
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `-addr` | `127.0.0.1:7860` | where the module listens (loopback only) |
 | `-install` | `$ANYTEXT_SELF` | the installation, `http://127.0.0.1:7787` when nothing is set |
-| `-bucket` | `галерея` | the collection with the pictures |
-| `-articles` | `мемуары` | the collection with the long-form articles (empty: no articles tab) |
+| `-bucket` | `галерея` | the collection with the pictures — the default, until the window saves a choice |
+| `-articles` | `мемуары` | the collection with the long-form articles (empty: no articles tab) — the default too |
 | `-public-base` | — | the address public copies are served at, e.g. `https://bmat.uk/i/pub` |
 
 ## Tests

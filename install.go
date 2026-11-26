@@ -74,6 +74,9 @@ func (c *installClient) call(ctx context.Context, command string, args map[strin
 
 // Picture is one image of the collection, as the screen needs it.
 type Picture struct {
+	// Bucket is the collection this picture came from: the grid may show several, and a picture is
+	// published, described and thrown away in its own collection (26.11.2026).
+	Bucket string `json:"bucket,omitempty"`
 	Doc    string `json:"doc"`
 	Name   string `json:"name"`
 	Folder string `json:"folder,omitempty"`
@@ -269,4 +272,49 @@ func pathExt(name string) string {
 		return name[i:]
 	}
 	return ""
+}
+
+// Collection is one collection of the installation as the settings form needs it: a name a person
+// recognises and the folders behind it, which are the installation's business but are shown so that
+// nobody has to guess where the pictures will come from (26.11.2026).
+type Collection struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Folders []string `json:"folders"`
+}
+
+// Collections lists the collections of the installation.
+func (c *installClient) Collections(ctx context.Context) ([]Collection, error) {
+	raw, err := c.call(ctx, "bucket.list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []Collection
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("список коллекций не разобран: %w", err)
+	}
+	return out, nil
+}
+
+// HasMarkdown says whether a collection holds at least one chapter: a person may point the articles
+// section at a collection of pictures by mistake, and the module should say so before it saves.
+func (c *installClient) HasMarkdown(ctx context.Context, bucket string) (bool, error) {
+	raw, err := c.call(ctx, "doc.list", map[string]any{"bucket": bucket, "limit": 200})
+	if err != nil {
+		return false, err
+	}
+	var answer struct {
+		Documents []struct {
+			Name string `json:"name"`
+		} `json:"documents"`
+	}
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		return false, fmt.Errorf("список документов не разобран: %w", err)
+	}
+	for _, d := range answer.Documents {
+		if strings.HasSuffix(strings.ToLower(d.Name), ".md") && !strings.EqualFold(d.Name, "readme.md") {
+			return true, nil
+		}
+	}
+	return false, nil
 }

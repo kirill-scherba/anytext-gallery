@@ -53,7 +53,11 @@ type Article struct {
 // waste of the installation's time.
 type articlesReader struct {
 	install *installClient
-	bucket  string
+	// bucket answers the collection of chapters. It is a function, not a name: a person may change the
+	// collection while the module runs, and the reader must follow without a restart (26.11.2026).
+	bucket func() string
+	// cachedFor is the collection the cached list belongs to.
+	cachedFor string
 
 	mu       sync.Mutex
 	list     []Article
@@ -62,7 +66,20 @@ type articlesReader struct {
 }
 
 func newArticlesReader(install *installClient, bucket string) *articlesReader {
+	return &articlesReader{install: install, bucket: func() string { return bucket }}
+}
+
+// newArticlesReaderDynamic reads the collection from a function: the settings of the module.
+func newArticlesReaderDynamic(install *installClient, bucket func() string) *articlesReader {
 	return &articlesReader{install: install, bucket: bucket}
+}
+
+// bucketNow is the collection to read, empty when the module has no articles tab.
+func (r *articlesReader) bucketNow() string {
+	if r.bucket == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.bucket())
 }
 
 // markdown is the renderer: tables, lists, headings and images are enough for a memoir. A table is
@@ -118,11 +135,21 @@ func (a *app) Articles(ctx context.Context) ([]Article, error) {
 func (r *articlesReader) List(ctx context.Context) ([]Article, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	bucket := r.bucketNow()
+	if bucket == "" {
+		r.list, r.byName, r.loadedAt, r.cachedFor = nil, nil, time.Time{}, ""
+		return nil, nil
+	}
+	// Another collection was chosen: what is cached belongs to the old one.
+	if bucket != r.cachedFor {
+		r.list, r.byName, r.loadedAt = nil, nil, time.Time{}
+		r.cachedFor = bucket
+	}
 	if len(r.list) > 0 && time.Since(r.loadedAt) < articleCacheTTL {
 		return r.list, nil
 	}
 
-	raw, err := r.install.call(ctx, "doc.list", map[string]any{"bucket": r.bucket, "limit": 10000})
+	raw, err := r.install.call(ctx, "doc.list", map[string]any{"bucket": bucket, "limit": 10000})
 	if err != nil {
 		return nil, err
 	}
