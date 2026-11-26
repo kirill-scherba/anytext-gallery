@@ -23,29 +23,31 @@ person ──► AnyText (proxy /api/module/gallery/) ──► anytext-gallery 
 
 ## Build and install
 
-Один скрипт: собрать, поставить, проверить. Он же умеет ставить на другую машину и публиковать бинарь.
+One script: build, install, check. It can also install on another machine and publish the binary.
 
 ```bash
 ./scripts/install-module.sh build                  # dist/anytext-gallery-linux-amd64 + sha256
-./scripts/install-module.sh install                # на этой машине: бинарь, реестр, перезапуск, проверка
-./scripts/install-module.sh install --remote host  # то же на другой машине через ssh-agent
-./scripts/install-module.sh publish                # в бакет modules/gallery/<version>/ с sha256
-./scripts/install-module.sh all                    # build + install (чаще всего это)
+./scripts/install-module.sh install                # here: binary, registry entry, restart, check
+./scripts/install-module.sh install --remote host  # the same on another machine through the ssh-agent
+./scripts/install-module.sh publish                # into the bucket: modules/gallery/<version>/ + sha256
+./scripts/install-module.sh all                    # build + install (what is used most of the time)
 ```
 
-- Коллекции и адрес скрипт берёт **из уже установленной записи** в
-  `~/.config/teonet/anytext/modules/modules.json`: обновление не меняет настройки модуля. Если записи
-  нет — значения по умолчанию, их можно переопределить переменными `BUCKET`, `ARTICLES`,
-  `PUBLIC_BASE`, `ADDR`, `INSTALL`.
-- Версия — из `main.go`; её же скрипт сверяет с той, что отвечает `/api/module/gallery/api/status`
-  после перезапуска, и падает, если они разошлись.
-- `--remote` находит сокет ssh-агента с ключом сам (`~/.ssh/agent/*`), копирует бинарь, пишет реестр
-  на той машине её же `/api/command` и запускает модуль.
-- `publish` кладёт в `gs://cooksy-ea86d-anytext-releases/modules/gallery/<version>/` бинарь и его
-  sha256 — это первый шаг к каталогу модулей (в ядре установки по адресу пока нет).
+- The collections and the address are taken **from the entry already installed** in
+  `~/.config/teonet/anytext/modules/modules.json`, so updating the module does not change how it is
+  configured. With no entry the defaults are used; `BUCKET`, `ARTICLES`, `PUBLIC_BASE`, `ADDR` and
+  `INSTALL` override them.
+- The version comes from `main.go`, and the script compares it with what
+  `/api/module/gallery/api/status` answers after the restart — a binary built after a change but
+  without a version bump fails the check instead of looking old.
+- `--remote` finds the ssh-agent socket that holds a key itself (`~/.ssh/agent/*`), copies the binary,
+  writes the registry on that machine through its own `/api/command` and starts the module.
+- `publish` puts the binary and its sha256 into
+  `gs://cooksy-ea86d-anytext-releases/modules/gallery/<version>/` — the first step towards the module
+  catalogue (the core cannot install from an address yet).
 
-Без скрипта: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ~/.local/bin/anytext-gallery .`,
-затем `modules.install` с командной строкой.
+Without the script: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ~/.local/bin/anytext-gallery .`
+and then `modules.install` with the command line.
 
 ## The screen
 
