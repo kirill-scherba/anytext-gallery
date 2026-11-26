@@ -46,6 +46,11 @@ type app struct {
 
 	// mu guards the settings that a person may change while the module runs.
 	mu sync.RWMutex
+	// pics is the last answer of pictures(): listing a collection is the most expensive call the
+	// module makes (the installation reads every description), and a chapter needs the same list
+	// only to map picture names to keys (26.11.2026).
+	pics   []Picture
+	picsAt time.Time
 	// sets is what the owner chose: the pictures collections, the articles collection, the public
 	// address. The flags are only the defaults until the window says otherwise.
 	sets     settings
@@ -231,30 +236,17 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	pics := []Picture{}
-	problems := []string{}
-	for _, bucket := range a.pictureBuckets() {
-		found, err := a.install.Pictures(ctx, bucket, a.rootFolder(ctx, bucket))
-		if err != nil {
-			// One unreadable collection must not hide the others: the grid says which one failed and
-			// keeps showing what it has (26.11.2026).
-			problems = append(problems, bucket+": "+err.Error())
-			continue
-		}
-		for i := range found {
-			found[i].Bucket = bucket
-		}
-		pics = append(pics, found...)
-	}
-	if len(problems) > 0 && len(pics) == 0 {
-		writeError(w, http.StatusBadGateway, errors.New(strings.Join(problems, "; ")))
+	pics, err := a.pictures(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	// The words about the pictures are loaded before the filter: a search looks into the description
-	// and the tags as well as into the file name, and without them a described picture is found only
-	// by the name a person cannot remember (23.11.2026).
-	a.decorate(ctx, pics)
+	// A filter looks into the description and the tags as well as the file name, so it needs the words
+	// of every picture; without a filter only the cards on screen need them, and asking the memory for
+	// four hundred records to show sixty is what made a page cost three quarters of a second
+	// (26.11.2026).
 	if filter != "" {
+		a.decorate(ctx, pics)
 		kept := pics[:0]
 		for _, p := range pics {
 			if pictureMatches(p, filter) {
@@ -274,6 +266,7 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	page := pics[offset:end]
+	a.decorate(ctx, page)
 	answer := map[string]any{
 		"bucket":  a.mainBucket(),
 		"buckets": a.pictureBuckets(),
@@ -345,6 +338,7 @@ func (a *app) saveMeta(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
+	a.forgetPictures()
 	answer := map[string]any{"doc": doc, "meta": meta}
 	if a.memory != nil {
 		if err := a.memory.Save(ctx, nameOf(doc), meta); err != nil {
@@ -475,6 +469,7 @@ func (a *app) makePublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	a.forgetPictures()
 	writeJSON(w, http.StatusOK, map[string]any{"doc": pic.Doc, "public": true, "url": a.publicURL(pic)})
 }
 
@@ -489,6 +484,7 @@ func (a *app) removePublic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	a.forgetPictures()
 	writeJSON(w, http.StatusOK, map[string]any{"doc": pic.Doc, "public": false})
 }
 
@@ -508,6 +504,7 @@ func (a *app) trash(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	a.forgetPictures()
 	writeJSON(w, http.StatusOK, map[string]any{"doc": doc, "trashed": true})
 }
 
@@ -1030,7 +1027,23 @@ func (a *app) publishArticle(w http.ResponseWriter, r *http.Request) {
 // pictures answers the pictures of every chosen collection, each knowing where it came from. The flag
 // "-bucket" is one collection, but a person may have several: generated pictures, screenshots,
 // photographs, and the grid is the one place where they belong together (26.11.2026).
+const picturesTTL = 30 * time.Second
+
+// forgetPictures drops the cached list: a picture was described, published or thrown away, and the
+// grid must say so at once.
+func (a *app) forgetPictures() {
+	a.mu.Lock()
+	a.pics, a.picsAt = nil, time.Time{}
+	a.mu.Unlock()
+}
+
 func (a *app) pictures(ctx context.Context) ([]Picture, error) {
+	a.mu.RLock()
+	cached, at := a.pics, a.picsAt
+	a.mu.RUnlock()
+	if cached != nil && time.Since(at) < picturesTTL {
+		return cached, nil
+	}
 	out := []Picture{}
 	problems := []string{}
 	for _, bucket := range a.pictureBuckets() {
@@ -1047,6 +1060,9 @@ func (a *app) pictures(ctx context.Context) ([]Picture, error) {
 	if len(out) == 0 && len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
+	a.mu.Lock()
+	a.pics, a.picsAt = out, time.Now()
+	a.mu.Unlock()
 	return out, nil
 }
 
@@ -1140,6 +1156,7 @@ func (a *app) settingsPost(w http.ResponseWriter, r *http.Request) {
 	a.sets = in
 	a.bucket = in.Pictures[0]
 	a.roots = map[string]rootEntry{}
+	a.pics, a.picsAt = nil, time.Time{}
 	a.mu.Unlock()
 	a.edges = newEdgesCache()
 	a.mediaCache = nil
