@@ -519,3 +519,16 @@ html.dark .hint { color: #4fd18b; }
 .collection-option .collection-name { font-weight: 600; }
 .collection-option .collection-path { grid-column: 2; font-size: 12px; color: var(--muted); word-break: break-all; }
 #settings { width: min(640px, calc(100vw - 32px)); }
+
+/* The two buttons that act on the whole screen: a frame so they read as buttons even before the mouse
+   is over them, and one glyph instead of a word — «Обновить» and «Настройки» sit next to the search
+   and were taking a whole word each (26.11.2026). */
+button.text.icon-btn {
+  border-color: var(--line);
+  padding: 4px 9px;
+  font-size: 16px;
+  line-height: 1.1;
+  min-width: 34px;
+  text-align: center;
+}
+button.text.icon-btn:hover { border-color: var(--accent); background: var(--soft); }

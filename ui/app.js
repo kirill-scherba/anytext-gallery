@@ -1409,6 +1409,10 @@ function showTab(tab) {
   // The counter and the "by meaning" note belong to the tab: a new tab starts from its own search.
   state.semantic = 0
   updateCounter()
+  $('refresh').title = t('refresh')
+  $('refresh').setAttribute('aria-label', t('refresh'))
+  $('settingsBtn').title = t('settings')
+  $('settingsBtn').setAttribute('aria-label', t('settings'))
   $('search').placeholder = t(state.tab === 'articles' ? 'searchPlaceholderArticles' : 'searchPlaceholder')
   $('search').hidden = false
   $('sort').hidden = state.tab === 'articles'
