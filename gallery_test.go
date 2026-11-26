@@ -21,13 +21,15 @@ type fakeInstall struct {
 	calls  []string
 	bucket any
 	docs   any
+	texts  map[string]string
 	fail   bool
 }
 
 func (f *fakeInstall) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Command string `json:"command"`
+			Command string         `json:"command"`
+			Args    map[string]any `json:"args"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		f.mu.Lock()
@@ -43,6 +45,17 @@ func (f *fakeInstall) handler() http.HandlerFunc {
 			result = f.bucket
 		case "doc.list":
 			result = f.docs
+		case "doc.text":
+			// The module asks for the file itself (raw) and names the collection: a reader that puts
+			// something other than a name into that argument gets nothing, and the whole articles tab
+			// goes silent (26.11.2026).
+			doc, _ := req.Args["doc"].(string)
+			bucket, _ := req.Args["bucket"].(string)
+			if bucket == "" {
+				_, _ = w.Write([]byte(`{"error":"коллекция не названа"}`))
+				return
+			}
+			result = map[string]any{"doc": doc, "bucket": bucket, "text": f.texts[doc]}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"result": result})
 	}
@@ -553,5 +566,58 @@ func TestBucketOfDoc(t *testing.T) {
 		if got := a.bucketOf(tt.doc); got != tt.want {
 			t.Errorf("bucketOf(%q) = %q, want %q", tt.doc, got, tt.want)
 		}
+	}
+}
+
+// TestArticlesReadTheirCollection: the list asks for the collection by name and reads every chapter.
+// A reader that passes something else as the collection answers "no articles" with no error at all,
+// which was the whole of 0.6.1 (26.11.2026).
+func TestArticlesReadTheirCollection(t *testing.T) {
+	chapter := "# Глава. Проверка\n\n**Автор:** Барон\n**Дата:** 2026-11-26\n\nТекст главы.\n"
+	f := &fakeInstall{
+		bucket: collection(),
+		docs: map[string]any{"documents": []map[string]any{
+			{"key": "мемуары/memoirs/chapter.md", "name": "chapter.md", "kind": "text"},
+			{"key": "мемуары/memoirs/readme.md", "name": "readme.md", "kind": "text"},
+		}},
+		texts: map[string]string{"мемуары/memoirs/chapter.md": chapter},
+	}
+	install := newFakeClient(t, f)
+	reader := newArticlesReaderDynamic(install, func() string { return "мемуары" })
+
+	list, err := reader.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("articles = %d, want 1 (a readme is not a chapter)", len(list))
+	}
+	if list[0].Title != "Глава. Проверка" || list[0].Author != "Барон" {
+		t.Errorf("article = %+v", list[0])
+	}
+}
+
+// TestArticlesFollowTheCollection: choosing another collection takes effect without a restart, and
+// the cached list of the old one is dropped.
+func TestArticlesFollowTheCollection(t *testing.T) {
+	bucket := "мемуары"
+	f := &fakeInstall{
+		bucket: collection(),
+		docs:   map[string]any{"documents": []map[string]any{}},
+		texts:  map[string]string{},
+	}
+	install := newFakeClient(t, f)
+	reader := newArticlesReaderDynamic(install, func() string { return bucket })
+
+	if list, err := reader.List(context.Background()); err != nil || len(list) != 0 {
+		t.Fatalf("first read: %v / %d", err, len(list))
+	}
+	bucket = ""
+	list, err := reader.List(context.Background())
+	if err != nil {
+		t.Fatalf("empty collection: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("articles = %d, want none", len(list))
 	}
 }

@@ -299,7 +299,7 @@ func (r *articlesReader) Story(ctx context.Context, picture string) (Article, bo
 func (r *articlesReader) text(ctx context.Context, key string) (string, error) {
 	// raw: the file itself, not its extracted form — markdown rendered from the extracted text loses
 	// its blank lines, its lists and its rules (22.11.2026).
-	raw, err := r.install.call(ctx, "doc.text", map[string]any{"bucket": r.bucket, "doc": key, "raw": true})
+	raw, err := r.install.call(ctx, "doc.text", map[string]any{"bucket": r.bucketNow(), "doc": key, "raw": true})
 	if err != nil {
 		return "", err
 	}
