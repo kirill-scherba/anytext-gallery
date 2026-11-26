@@ -23,18 +23,29 @@ person ──► AnyText (proxy /api/module/gallery/) ──► anytext-gallery 
 
 ## Build and install
 
+Один скрипт: собрать, поставить, проверить. Он же умеет ставить на другую машину и публиковать бинарь.
+
 ```bash
-CGO_ENABLED=0 go build -o ~/.local/bin/anytext-gallery .
-
-curl -s -X POST http://127.0.0.1:7787/api/command -H 'Content-Type: application/json' -d '{
-  "command":"modules.install",
-  "args":{"id":"gallery","name":"Галерея","names":{"ru":"Галерея","en":"Gallery"},"version":"0.1.0",
-          "addr":"127.0.0.1:7860",
-          "command":["'"$HOME"'/.local/bin/anytext-gallery","-addr","127.0.0.1:7860","-bucket","галерея"],
-          "auto_start":true}}'
-
-curl -s http://127.0.0.1:7787/api/module/gallery/health   # {"status":"ok"}
+./scripts/install-module.sh build                  # dist/anytext-gallery-linux-amd64 + sha256
+./scripts/install-module.sh install                # на этой машине: бинарь, реестр, перезапуск, проверка
+./scripts/install-module.sh install --remote host  # то же на другой машине через ssh-agent
+./scripts/install-module.sh publish                # в бакет modules/gallery/<version>/ с sha256
+./scripts/install-module.sh all                    # build + install (чаще всего это)
 ```
+
+- Коллекции и адрес скрипт берёт **из уже установленной записи** в
+  `~/.config/teonet/anytext/modules/modules.json`: обновление не меняет настройки модуля. Если записи
+  нет — значения по умолчанию, их можно переопределить переменными `BUCKET`, `ARTICLES`,
+  `PUBLIC_BASE`, `ADDR`, `INSTALL`.
+- Версия — из `main.go`; её же скрипт сверяет с той, что отвечает `/api/module/gallery/api/status`
+  после перезапуска, и падает, если они разошлись.
+- `--remote` находит сокет ssh-агента с ключом сам (`~/.ssh/agent/*`), копирует бинарь, пишет реестр
+  на той машине её же `/api/command` и запускает модуль.
+- `publish` кладёт в `gs://cooksy-ea86d-anytext-releases/modules/gallery/<version>/` бинарь и его
+  sha256 — это первый шаг к каталогу модулей (в ядре установки по адресу пока нет).
+
+Без скрипта: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ~/.local/bin/anytext-gallery .`,
+затем `modules.install` с командной строкой.
 
 ## The screen
 
