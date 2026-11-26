@@ -4,13 +4,13 @@
 #   ./scripts/install-module.sh build                 build the static binary into dist/
 #   ./scripts/install-module.sh install               install here, restart the module, check it answers
 #   ./scripts/install-module.sh install --remote HOST install on another machine through the ssh-agent
-#   ./scripts/install-module.sh publish               upload the binary and its sha256 to the bucket
+#   ./scripts/install-module.sh publish               build every platform, upload it and write the catalogue entry
 #   ./scripts/install-module.sh all                   build + install (what is used most of the time)
 #
-# Why a script and not a module catalogue: the core cannot yet install a module from an address, so
-# publishing a module means building it, copying the binary and writing the installation's registry
-# entry. The script does exactly that and hides nothing — every command it runs is visible in its
-# output.
+# A module is a static Go binary, so build makes all the platforms the application itself builds:
+# linux-amd64, linux-arm64, windows-amd64, darwin-arm64, darwin-amd64. publish uploads them and writes
+# the entry into catalog.json of matrica-modules-dist, which is what an installation reads to install a
+# module with one button. Private modules never run publish: they are not in the catalogue.
 #
 # Settings come from the registry of this installation: when the gallery is already installed, its
 # collections and address are reused and only the binary is replaced. Otherwise the defaults are used;
@@ -18,6 +18,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+MODULE_ID=gallery
 BIN_NAME=anytext-gallery
 REMOTE=""
 ACTION="${1:-all}"
@@ -84,14 +85,32 @@ PY
   done <<< "$line"
 }
 
+# PLATFORMS is the same set of builds the application itself makes: a module is a static Go binary, so
+# one machine builds all of them (26.11.2026).
+PLATFORMS="${PLATFORMS:-linux-amd64 linux-arm64 windows-amd64 darwin-arm64 darwin-amd64}"
+
+# assetName is the file name of one platform's build: anytext-gallery-windows-amd64.exe.
+assetName() {
+  case "$1" in
+    windows-*) echo "$BIN_NAME-$1.exe" ;;
+    *) echo "$BIN_NAME-$1" ;;
+  esac
+}
+
 build() {
-  log "building $BIN_NAME $VERSION"
+  log "building $BIN_NAME $VERSION for $PLATFORMS"
   mkdir -p "$DIST"
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags "-s -w" -o "$OUT" .
-  ( cd "$DIST" && sha256sum "$BIN_NAME-linux-amd64" | tee "$BIN_NAME-linux-amd64.sha256" ) >/dev/null
-  ls -lh "$OUT" | awk '{print "   " $9 " " $5}'
-  echo "   sha256 $(cut -d' ' -f1 "$OUT.sha256")"
+  local platform os arch name
+  for platform in $PLATFORMS; do
+    os="${platform%%-*}"
+    arch="${platform##*-}"
+    name=$(assetName "$platform")
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+      go build -trimpath -ldflags "-s -w" -o "$DIST/$name" .
+    ( cd "$DIST" && sha256sum "$name" > "$name.sha256" )
+    printf "   %-26s %5s  sha256 %s\n" "$name" "$(du -h "$DIST/$name" | cut -f1)" "$(cut -d' ' -f1 "$DIST/$name.sha256" | cut -c1-16)"
+  done
+  # $OUT is the linux-amd64 build: the one this machine installs.
 }
 
 # registryJSON builds the body of modules.install. JSON is assembled by python: collection names in
@@ -200,15 +219,40 @@ installRemote() {
 }
 
 publish() {
-  log "publishing into the bucket"
-  local bucket="gs://cooksy-ea86d-anytext-releases/modules/gallery/$VERSION"
+  log "publishing $VERSION into the bucket"
+  local bucket="gs://cooksy-ea86d-anytext-releases/modules/$MODULE_ID/$VERSION"
   local gsutil="${GSUTIL:-$HOME/google-cloud-sdk/bin/gsutil}"
-  "$gsutil" -q cp "$OUT" "$bucket/$BIN_NAME-linux-amd64"
-  "$gsutil" -q cp "$OUT.sha256" "$bucket/$BIN_NAME-linux-amd64.sha256"
-  "$gsutil" -q setmeta -h "Cache-Control:no-store" "$bucket/$BIN_NAME-linux-amd64" >/dev/null
-  echo "   $bucket/$BIN_NAME-linux-amd64"
-  echo "   sha256 $(cut -d' ' -f1 "$OUT.sha256")"
-  echo "   address: https://storage.googleapis.com/cooksy-ea86d-anytext-releases/modules/gallery/$VERSION/$BIN_NAME-linux-amd64"
+  local platform name
+  for platform in $PLATFORMS; do
+    name=$(assetName "$platform")
+    [ -f "$DIST/$name" ] || { echo "нет сборки $name — сначала build" >&2; exit 1; }
+    "$gsutil" -q cp "$DIST/$name" "$bucket/$name"
+    "$gsutil" -q setmeta -h "Cache-Control:no-store" "$bucket/$name" >/dev/null
+    echo "   $bucket/$name"
+  done
+  catalogEntry
+}
+
+# catalogEntry puts the version into catalog.json of matrica-modules-dist, with url, sha256 and size per
+# platform. The entry describes exactly the bytes that were uploaded a second ago — a checksum typed by
+# hand is a checksum nobody can trust.
+catalogEntry() {
+  local repo="${CATALOG_REPO:-$HOME/go/src/github.com/kirill-scherba/matrica-modules-dist}"
+  if [ ! -d "$repo/.git" ]; then
+    echo "   каталог не найден: $repo" >&2
+    return 1
+  fi
+  python3 scripts/catalog-entry.py \
+    --catalog "$repo/catalog.json" \
+    --module "$MODULE_ID" --version "$VERSION" \
+    --dist "$DIST" --bin "$BIN_NAME" \
+    --platforms "$(echo "$PLATFORMS" | tr ' ' ',')" \
+    --names '{"ru":"Галерея","en":"Gallery"}' \
+    --description '{"ru":"Картинки, статьи и поиск по коллекциям установки","en":"Pictures, articles and search over the collections"}' \
+    --category media --repository kirill-scherba/anytext-gallery \
+    --addr "$ADDR" --args "[\"-addr\",\"$ADDR\"]" --ui ui --auto-start
+  ( cd "$repo" && git add catalog.json && git commit -q -m "module $MODULE_ID $VERSION" && git push -q origin main ) \
+    && echo "   каталог обновлён и запушен"
 }
 
 reuseRegistry

@@ -32,6 +32,12 @@ type settings struct {
 // settingsPath is where the choice lives: beside the other modules of this installation when the
 // installation's own folder is known, and in the user's config folder otherwise.
 func settingsPath() string {
+	// The installation owns the folder of a module's settings and tells the module where it is: that is
+	// what makes "удалить файлы и настройки" work for every module, not only for those that agreed on a
+	// path of their own (26.11.2026).
+	if dir := strings.TrimSpace(os.Getenv("ANYTEXT_MODULE_SETTINGS")); dir != "" {
+		return filepath.Join(dir, "config.json")
+	}
 	if dir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); dir != "" {
 		return filepath.Join(dir, "teonet", "anytext-gallery", "config.json")
 	}

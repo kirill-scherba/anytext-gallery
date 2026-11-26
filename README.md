@@ -26,12 +26,18 @@ person ──► AnyText (proxy /api/module/gallery/) ──► anytext-gallery 
 One script: build, install, check. It can also install on another machine and publish the binary.
 
 ```bash
-./scripts/install-module.sh build                  # dist/anytext-gallery-linux-amd64 + sha256
+./scripts/install-module.sh build                  # five platforms into dist/, each with its sha256
 ./scripts/install-module.sh install                # here: binary, registry entry, restart, check
 ./scripts/install-module.sh install --remote host  # the same on another machine through the ssh-agent
-./scripts/install-module.sh publish                # into the bucket: modules/gallery/<version>/ + sha256
+./scripts/install-module.sh publish                # all five into the bucket and the catalogue entry
 ./scripts/install-module.sh all                    # build + install (what is used most of the time)
 ```
+
+`build` makes the same five builds the application itself makes — `linux-amd64`, `linux-arm64`,
+`windows-amd64` (.exe), `darwin-arm64`, `darwin-amd64` — because a module is a static Go binary.
+`publish` uploads them to `gs://cooksy-ea86d-anytext-releases/modules/gallery/<version>/` and writes
+the entry into `catalog.json` of `matrica-modules-dist` with the checksum and size of every file: an
+installation reads that file and installs the module with one command (`modules.install {id}`).
 
 - The collections and the address are taken **from the entry already installed** in
   `~/.config/teonet/anytext/modules/modules.json`, so updating the module does not change how it is
