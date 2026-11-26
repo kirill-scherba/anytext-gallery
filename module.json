@@ -1,0 +1,28 @@
+{
+  "id": "gallery",
+  "names": {
+    "ru": "Галерея",
+    "en": "Gallery"
+  },
+  "description": {
+    "ru": "Картинки, статьи и поиск по коллекциям установки",
+    "en": "Pictures, articles and search over the collections"
+  },
+  "category": "media",
+  "binary": "anytext-gallery",
+  "addr": "127.0.0.1:7860",
+  "args": [
+    "-addr",
+    "127.0.0.1:7860"
+  ],
+  "ui": "ui",
+  "auto_start": true,
+  "strip": true,
+  "platforms": [
+    "linux-amd64",
+    "linux-arm64",
+    "windows-amd64",
+    "darwin-arm64",
+    "darwin-amd64"
+  ]
+}
