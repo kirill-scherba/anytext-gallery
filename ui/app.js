@@ -457,7 +457,7 @@ async function loadConfig() {
   }
 }
 
-async function loadPage(reset) {
+async function loadPage(reset, fresh) {
   if (state.loading || (state.done && !reset)) return
   if (reset) {
     state.items = []
@@ -471,6 +471,7 @@ async function loadPage(reset) {
   try {
     const q = new URLSearchParams({ offset: String(state.offset), limit: String(LIMIT), sort: state.sort })
     if (state.q) q.set('q', state.q)
+    if (fresh) q.set('refresh', '1')
     if (relayed()) q.set('media', '1')
     const page = await api('api/images?' + q.toString())
     if (page.media) state.media = page.media
@@ -1185,11 +1186,18 @@ function applyTexts() {
 function bind() {
   $('refresh').addEventListener('click', () => {
     hideNotice()
-    // «Обновить» clears the search and reloads the grid; runSearch is the one that knows both tabs.
+    // «Обновить» clears the search and reloads the grid; the module drops its picture list with
+    // refresh=1, which is how a file added outside the module appears without a restart.
     $('search').value = ''
-    runSearch('')
-    if (state.tab === 'articles') loadArticles('')
-    else loadPage(true)
+    state.q = ''
+    state.semantic = 0
+    if (state.tab === 'articles') {
+      loadArticles('')
+      return
+    }
+    state.loading = false
+    state.done = false
+    loadPage(true, true)
   })
   // The toolbar behind one button on a phone; it folds back as soon as a choice is made.
   const topbar = document.querySelector('.topbar')

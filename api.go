@@ -51,6 +51,10 @@ type app struct {
 	// only to map picture names to keys (26.11.2026).
 	pics   []Picture
 	picsAt time.Time
+	// docByName maps a picture's file name to its document key: a chapter names its pictures, and the
+	// viewer needs the key. It is filled from the list when that is read, and by a targeted lookup for
+	// a name nobody has seen yet (26.11.2026).
+	docByName map[string]string
 	// sets is what the owner chose: the pictures collections, the articles collection, the public
 	// address. The flags are only the defaults until the window says otherwise.
 	sets     settings
@@ -227,6 +231,10 @@ func (a *app) images(w http.ResponseWriter, r *http.Request) {
 	}
 	if limit > 240 {
 		limit = 240
+	}
+	if q.Get("refresh") == "1" {
+		// The button «Обновить» is the one honest way to say "the collection changed under you".
+		a.forgetPictures()
 	}
 	filter := strings.ToLower(strings.TrimSpace(q.Get("q")))
 	mode := q.Get("sort")
@@ -592,18 +600,9 @@ func (a *app) article(w http.ResponseWriter, r *http.Request) {
 	}
 	// The screen resolves a picture of the article to its document key, so the article's pictures use
 	// the same viewer as the grid.
-	pics, err := a.pictures(ctx)
-	if err == nil {
-		byName := map[string]string{}
-		for _, p := range pics {
-			byName[p.Name] = p.Doc
-		}
-		docs := map[string]string{}
-		for _, name := range page["pictures"].([]string) {
-			if doc, ok := byName[name]; ok {
-				docs[name] = doc
-			}
-		}
+	names, _ := page["pictures"].([]string)
+	docs := a.pictureDocs(ctx, names)
+	if len(docs) > 0 {
 		page["docs"] = docs
 		// The chapter's pictures are fetched through the relay as well: the permit travels with the
 		// page (23.11.2026).
@@ -1027,13 +1026,19 @@ func (a *app) publishArticle(w http.ResponseWriter, r *http.Request) {
 // pictures answers the pictures of every chosen collection, each knowing where it came from. The flag
 // "-bucket" is one collection, but a person may have several: generated pictures, screenshots,
 // photographs, and the grid is the one place where they belong together (26.11.2026).
-const picturesTTL = 30 * time.Second
+// picturesTTL is how long the picture list is trusted when nothing tells us otherwise. Pictures are
+// files: their names do not change, and the list changes only when a file appears or is thrown away —
+// which is either our own doing (we drop the cache) or a person's (the «Обновить» button). Thirty
+// seconds was an arbitrary number that made every half a minute pay for a list nobody had changed
+// (26.11.2026).
+const picturesTTL = 15 * time.Minute
 
 // forgetPictures drops the cached list: a picture was described, published or thrown away, and the
 // grid must say so at once.
 func (a *app) forgetPictures() {
 	a.mu.Lock()
 	a.pics, a.picsAt = nil, time.Time{}
+	a.docByName = nil
 	a.mu.Unlock()
 }
 
@@ -1060,8 +1065,13 @@ func (a *app) pictures(ctx context.Context) ([]Picture, error) {
 	if len(out) == 0 && len(problems) > 0 {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
+	byName := make(map[string]string, len(out))
+	for _, p := range out {
+		byName[p.Name] = p.Doc
+	}
 	a.mu.Lock()
 	a.pics, a.picsAt = out, time.Now()
+	a.docByName = byName
 	a.mu.Unlock()
 	return out, nil
 }
@@ -1165,4 +1175,70 @@ func (a *app) settingsPost(w http.ResponseWriter, r *http.Request) {
 		"pictures": a.pictureBuckets(), "articles": a.articlesBucket(), "public_base": a.publicBaseNow(),
 		"saved": true,
 	})
+}
+
+// pictureDocs answers the document keys of the pictures a chapter names, and nothing else. Opening one
+// chapter used to list every picture of the collection — four hundred documents to resolve two names,
+// which is where the 700 ms came from (26.11.2026).
+func (a *app) pictureDocs(ctx context.Context, names []string) map[string]string {
+	out := make(map[string]string, len(names))
+	if len(names) == 0 {
+		return out
+	}
+	a.mu.RLock()
+	known := make(map[string]string, len(names))
+	missing := make([]string, 0, len(names))
+	for _, name := range names {
+		if doc, ok := a.docByName[name]; ok {
+			known[name] = doc
+			continue
+		}
+		missing = append(missing, name)
+	}
+	a.mu.RUnlock()
+	for name, doc := range known {
+		out[name] = doc
+	}
+	if len(missing) == 0 {
+		return out
+	}
+
+	// One lookup per unknown name: the installation answers a name filter without reading the
+	// descriptions of the whole collection.
+	found := map[string]string{}
+	for _, name := range missing {
+		raw, err := a.install.call(ctx, "doc.list", map[string]any{
+			"query": name, "limit": 20, "all": true,
+		})
+		if err != nil {
+			continue
+		}
+		var answer struct {
+			Documents []struct {
+				Key  string `json:"key"`
+				Name string `json:"name"`
+			} `json:"documents"`
+		}
+		if json.Unmarshal(raw, &answer) != nil {
+			continue
+		}
+		for _, d := range answer.Documents {
+			if d.Name == name && d.Key != "" {
+				found[name] = d.Key
+				out[name] = d.Key
+				break
+			}
+		}
+	}
+	if len(found) > 0 {
+		a.mu.Lock()
+		if a.docByName == nil {
+			a.docByName = map[string]string{}
+		}
+		for name, doc := range found {
+			a.docByName[name] = doc
+		}
+		a.mu.Unlock()
+	}
+	return out
 }
